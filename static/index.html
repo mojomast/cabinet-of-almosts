@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>The Cabinet of Almosts</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <div class="eyebrow">Local project archaeology</div>
+    <h1>The Cabinet <i>of</i> Almosts</h1>
+    <p class="lede">A quiet inventory of unfinished work—and the pieces that might help it live again.</p>
+    <nav aria-label="Views">
+      <button class="tab active" data-view="gallery" aria-selected="true">Gallery</button>
+      <button class="tab" data-view="workbench" aria-selected="false">Workbench</button>
+      <button class="tab" data-view="method" aria-selected="false">Method</button>
+    </nav>
+  </header>
+  <main>
+    <section id="gallery" class="view">
+      <div class="section-head"><div><span class="kicker">The collection</span><h2>Gallery</h2></div><p id="summary">Opening drawers…</p></div>
+      <div id="gallery-grid" class="grid" aria-live="polite"></div>
+    </section>
+    <section id="workbench" class="view hidden">
+      <div class="section-head"><div><span class="kicker">Directional recombination</span><h2>Workbench</h2></div><p>Bounded suggestions, never automatic changes.</p></div>
+      <div id="recipes" class="recipes"></div>
+    </section>
+    <section id="method" class="view hidden">
+      <div class="section-head"><div><span class="kicker">A legible instrument</span><h2>Method</h2></div></div>
+      <div class="method-grid">
+        <article><b>01</b><h3>Look, never run</h3><p>The scanner reads bounded text files. It does not import, build, install, evaluate, or execute project code.</p></article>
+        <article><b>02</b><h3>Keep provenance</h3><p>Every score component points to Evidence. Every Exhibit carries a Source Fingerprint over the files actually observed.</p></article>
+        <article><b>03</b><h3>Suggest lightly</h3><p>Affinities are directional: a Provision in one Exhibit may answer a Need in another. Recipes remain small and reviewable.</p></article>
+        <article><b>04</b><h3>Stay local</h3><p>The read-only server binds to loopback. Assets are bundled here; no remote requests, trackers, or write endpoints exist.</p></article>
+      </div>
+      <details><summary>Snapshot limits</summary><pre id="limits"></pre></details>
+    </section>
+  </main>
+  <footer><span>Cabinet of Almosts</span><span id="fingerprint">Canonical local snapshot</span></footer>
+  <script src="/app.js" defer></script>
+</body>
+</html>
