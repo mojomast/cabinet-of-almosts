@@ -6,5 +6,11 @@ venv/
 .coverage
 htmlcov/
 cabinet.json
+capability-map.json
+project-capability-map.json
+public-capability-map.json
+compatibility.json
+cabinet-compatibility*.json
+cabinet-capability*.json
 benchmark-output/
 .DS_Store

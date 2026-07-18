@@ -88,7 +88,7 @@ Truncation is reported on an Exhibit when file-count, aggregate-byte, fragment, 
 
 ## 8. HTTP and UI
 
-Fixed routes are `/`, `/app.js`, `/cupboard.js`, `/style.css`, and `/cabinet.json`. GET and HEAD are supported. POST, PUT, PATCH, and DELETE return 405. Other paths return 404. Responses disable sniffing and caching and set a local-only restrictive Content Security Policy.
+Fixed routes are `/`, `/app.js`, `/cupboard.js`, `/style.css`, and `/cabinet.json`. Optional validated projections add `/compatibility.json` and `/capability-map.json`; an absent capability map returns 404, while absent compatibility returns JSON `null` for a quiet canonical-Affinity fallback. GET and HEAD are supported. POST, PUT, PATCH, and DELETE return 405. Other paths return 404. Responses disable sniffing and caching and set a local-only restrictive Content Security Policy.
 
 The bundled UI offers Gallery, Cupboard, and Method views. It has no remote assets. Dynamic values are rendered with DOM element creation and `textContent`, never `innerHTML`.
 
@@ -111,6 +111,34 @@ Arrangement selection is deterministic: stable candidate ordering, explicit inte
 ### Architecture drift audit
 
 The Observation context owns scanning and immutable Evidence. The Compatibility projection owns atomic donor-to-host claims. The Cupboard owns Steering and bounded arrangement selection. Presentation owns human labels and controls. None may reopen, execute, or modify a scanned source root. `Affinity` and `Resurrection Recipe` remain v1 compatibility terms; new UI code must not broaden their meaning into verified semantic compatibility.
+
+### Evidence graph and prompt projection
+
+The Evidence graph is a browser-local, Host-centered projection over existing v1 Affinities. It does not add graph records to the canonical snapshot. Canonical edge direction remains donor Exhibit → Host Exhibit, while the interface groups each edge under the selected Host for browsing. The complete donor list is the accessible source of truth; the visual SVG may show a clearly disclosed bounded subset to avoid an unreadable global hairball.
+
+An edge expands into selectable Contribution Pieces backed by its source Evidence and, when present, its shallow Fragment. A manual graph Arrangement is bounded to eight Pieces from four donors. Selection does not mutate the snapshot, Cupboard Variants, project files, or server state.
+
+A **Recombination Brief** is a deterministic plaintext implementation prompt projected from one Host, one manual Arrangement, and one user-authored Intent Note. Contract `cabinet-recombination-brief/v1` uses fixed section ordering, canonical JSON for all dynamic snapshot text, stable Evidence/Affinity IDs and Source Fingerprints, LF line endings, one trailing newline, and a 65,536-byte UTF-8 limit. Identical inputs produce identical bytes.
+
+The Brief treats project names, paths, comments, README excerpts, Fragment previews, and Evidence details as untrusted quoted data. It requires the receiving coding agent to inspect cited source, licensing, dependencies, APIs, platform assumptions, and tests before changing an explicitly supplied Host checkout. It may request the smallest selected adaptation only after that preflight. It must not claim compatibility, buildability, behavioral equivalence, licensing, correctness, security, or project quality merely from the graph. Copying is explicit and browser-local; the Cabinet makes no model call and performs no implementation itself.
+
+### Optional Capability Profile sidecar
+
+Contract `cabinet-project-capability-map/v1` is a separate canonical projection and never changes `cabinet-of-almosts/v1`. It is bounded to 2 MiB, SHA-256-bound to the canonical Cabinet bytes, and must contain exactly one unique Profile for every Exhibit name. The server adds the bound Exhibit ID and Source Fingerprint, rejects evidence/entrypoint locators not admitted to that Exhibit, rejects machine-local or credential-bearing public text, removes absolute checkout roots, and canonicalizes the public response before binding.
+
+A Capability Profile describes source-observed purpose, features, provided capabilities, accepted inputs, produced outputs, ecosystem, and Mashup Roles. The complete searchable Profile list is the accessible source of truth. A selected Profile graph shows at most 18 source-declared nodes, and a Conceptual Mashup juxtaposes at most four user-selected Profiles. Neither projection claims runtime, API, dependency, build, behavior, license, security, or deployment compatibility. The browser independently verifies the exact snapshot hash, corpus names, Exhibit IDs, Source Fingerprints, and public schema; rejection leaves Gallery, Cupboard, canonical Affinities, the Recombination Brief, and Method operational.
+
+### Optional static compatibility sidecar
+
+Contract `cabinet-compatibility-observations/v1` is a separate canonical JSON document and never extends or mutates `cabinet-of-almosts/v1`. Its `cabinet_binding.canonical_sha256` is the SHA-256 of the canonical Cabinet Snapshot bytes. Profile Exhibit IDs and Source Fingerprints must equal the complete Cabinet Exhibit set exactly; missing, duplicate, foreign, or drifted Profiles are rejected.
+
+Hydration is static-only. It may read only regular, non-symlink manifest and license files already admitted to an Exhibit, within the scanner's size limit, and only when the current file SHA-256 equals the Cabinet file record. It may use Python's standard-library JSON and TOML parsers or bounded regular expressions. It must not import project modules, invoke package managers, install dependencies, execute scripts, access the network, or record secret values.
+
+A Profile separates manifests, license-file observations, role signals, shallow interfaces, observations, Provisions, Host Needs, compatibility blockers, and truncation. `root_resolved` means only that the supplied source root was found; it does not mean the bounded scan was exhaustive. License-template detection is never a legal determination. Protocol-adapter Needs are hypotheses created by an explicit monorepo-admission policy.
+
+A compatibility edge references one donor Exhibit, one Host Exhibit, one Host Need, and named sidecar support IDs. Current static assessments use `matched_observations`; runtime assessment is `not_run`. Behavior, build, license, and security remain explicitly unassessed. Deterministic points rank bounded leads but are not probabilities or quality scores. At most eight leads are retained per Need and 6,000 overall, so absence and rank are not exhaustive compatibility conclusions.
+
+The loopback server exposes a compatibility document only when a validated sidecar is explicitly mounted. Otherwise `/compatibility.json` returns JSON `null` and the canonical Affinity graph remains usable. The browser independently checks schema, exact Profile coverage/fingerprints, edge references, and non-runtime assessment labels before hydration. Static-observation Contribution Pieces preserve compatibility edge/support IDs in the Recombination Brief and retain the fixed preflight contract.
 
 ## 10. Non-goals
 

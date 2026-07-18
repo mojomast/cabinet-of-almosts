@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="dark">
   <title>The Cabinet of Almosts</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='2' fill='%231b1e18'/%3E%3Cpath d='M4 3h8v10H4z' fill='none' stroke='%23e4c77b'/%3E%3Ccircle cx='10' cy='8' r='1' fill='%23dc8758'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -15,13 +16,25 @@
     <nav aria-label="Cabinet views" role="tablist">
       <button id="tab-gallery" class="tab active" data-view="gallery" role="tab" aria-controls="gallery" aria-selected="true">Gallery</button>
       <button id="tab-cupboard" class="tab" data-view="cupboard" role="tab" aria-controls="cupboard" aria-selected="false" tabindex="-1">Cupboard</button>
+      <button id="tab-graph" class="tab" data-view="graph" role="tab" aria-controls="graph" aria-selected="false" tabindex="-1">Mashup map</button>
       <button id="tab-method" class="tab" data-view="method" role="tab" aria-controls="method" aria-selected="false" tabindex="-1">Method</button>
     </nav>
   </header>
   <main>
     <section id="gallery" class="view" role="tabpanel" aria-labelledby="tab-gallery">
-      <div class="section-head"><div><span class="kicker">Historical autonomous projects only</span><h2>Gallery</h2></div><p id="summary">Opening drawers…</p></div>
-      <div id="gallery-grid" class="grid" aria-live="polite"></div>
+      <div class="section-head"><div><span class="kicker">Complete Cabinet Snapshot</span><h2>Gallery</h2></div><p id="summary">Opening all Exhibits…</p></div>
+      <section class="browse-tools" aria-labelledby="gallery-search-label">
+        <div>
+          <label id="gallery-search-label" for="gallery-search">Search all Exhibits</label>
+          <p>Search changes only this view; every Exhibit remains in the Cabinet.</p>
+        </div>
+        <div class="search-row">
+          <input id="gallery-search" type="search" placeholder="Name, repository, or language…" autocomplete="off" disabled>
+          <button id="clear-gallery-search" class="quiet" disabled>Clear search</button>
+        </div>
+        <p id="gallery-status" class="result-status" role="status" aria-live="polite">Loading the Cabinet Snapshot…</p>
+      </section>
+      <div id="gallery-grid" class="grid" aria-busy="true"></div>
     </section>
 
     <section id="cupboard" class="view hidden" role="tabpanel" aria-labelledby="tab-cupboard">
@@ -30,10 +43,11 @@
       <div class="cupboard-layout">
         <aside class="steering-panel" aria-labelledby="steer-heading">
           <div class="pane-heading"><span>01</span><h3 id="steer-heading">Choose and steer</h3></div>
-          <label for="host-search">Host project</label>
-          <input id="host-search" type="search" placeholder="Filter projects…" autocomplete="off">
-          <label class="inline-check"><input id="show-all-hosts" type="checkbox"> Show projects without detected needs</label>
-          <div id="host-options" class="choice-list host-list"></div>
+          <label for="host-search">Find a Host Exhibit</label>
+          <div class="search-row compact-search"><input id="host-search" type="search" placeholder="Search Host names…" autocomplete="off"><button id="clear-host-search" class="quiet" type="button">Clear</button></div>
+          <label class="inline-check"><input id="show-all-hosts" type="checkbox"> Include Exhibits without detected Needs</label>
+          <p id="host-status" class="result-status" role="status" aria-live="polite">Loading Host Exhibits…</p>
+          <div id="host-options" class="choice-list host-list" role="radiogroup" aria-label="Choose one Host Exhibit"></div>
 
           <fieldset id="goal-fieldset" disabled>
             <legend>What should change?</legend>
@@ -47,10 +61,11 @@
           <fieldset id="donor-fieldset" disabled>
             <legend>Donor scope</legend>
             <label class="inline-check"><input id="selected-only" type="checkbox"> Use only projects I prefer</label>
-            <label for="donor-search">Find donors</label>
-            <input id="donor-search" type="search" placeholder="Filter compatible donors…" autocomplete="off">
+            <label for="donor-search">Find potential donor Exhibits</label>
+            <div class="search-row compact-search"><input id="donor-search" type="search" placeholder="Search donor names…" autocomplete="off"><button id="clear-donor-search" class="quiet" type="button">Clear</button></div>
+            <p id="donor-status" class="result-status" role="status" aria-live="polite"></p>
             <div id="donor-options" class="choice-list donor-list"></div>
-            <p class="control-help">Each donor cycles through Available → Prefer → Exclude.</p>
+            <p class="control-help">Each donor cycles through Available → Prefer → Exclude. Matches are snapshot heuristics, not verified compatibility.</p>
           </fieldset>
 
           <fieldset id="dial-fieldset" disabled>
@@ -59,6 +74,7 @@
             <div class="dial"><label for="novelty">Novelty</label><output id="novelty-output" for="novelty">Balanced</output><input id="novelty" type="range" min="0" max="2" value="1"><div class="ticks"><span>Familiar</span><span>Surprising</span></div></div>
             <div class="dial"><label for="compatibility">Compatibility</label><output id="compatibility-output" for="compatibility">Balanced</output><input id="compatibility" type="range" min="0" max="2" value="1"><div class="ticks"><span>Strict</span><span>Exploratory</span></div></div>
             <div class="dial"><label for="risk">Risk tolerance</label><output id="risk-output" for="risk">Considered</output><input id="risk" type="range" min="0" max="2" value="1"><div class="ticks"><span>Cautious</span><span>Speculative</span></div></div>
+            <p class="control-help">This Cupboard Compatibility dial uses canonical Affinities and shared-language heuristics only. The optional static sidecar appears separately in the Compatibility workbench.</p>
           </fieldset>
           <button id="arrange" class="primary" disabled>Arrange pieces</button>
           <button id="start-over" class="quiet" disabled>Start over</button>
@@ -74,7 +90,7 @@
               <strong id="variant-label">Variant 1</strong>
               <button id="next-variant" aria-label="Next arrangement">→</button>
               <button id="try-another">Try another arrangement</button>
-              <button id="add-compare">Add to compare</button>
+              <button id="add-compare" aria-pressed="false">Add to compare</button>
             </div>
             <div id="variant-summary" class="variant-summary"></div>
             <div id="piece-list" class="piece-list"></div>
@@ -84,7 +100,7 @@
         </section>
 
         <aside class="evidence-panel" aria-labelledby="evidence-heading">
-          <div class="pane-heading"><span>03</span><h3 id="evidence-heading">Why these pieces fit</h3></div>
+          <div class="pane-heading"><span>03</span><h3 id="evidence-heading" tabindex="-1">Why these pieces were suggested</h3></div>
           <div id="evidence-chain" class="workspace-empty"><p>Select a proposed piece to inspect its host observation, matching rule, donor evidence, intended use, and cautions.</p></div>
         </aside>
       </div>
@@ -95,13 +111,99 @@
       </section>
     </section>
 
+    <section id="graph" class="view hidden" role="tabpanel" aria-labelledby="tab-graph">
+      <section id="capability-workbench" class="capability-workbench hidden" aria-labelledby="capability-heading">
+        <div class="section-head"><div><span class="kicker">Exact-corpus source profiles</span><h2 id="capability-heading">Capability Profiles</h2></div><p>Browse what each Exhibit declares it can provide, accept, produce, and complement. This profile layer is optional and never changes Cabinet evidence.</p></div>
+        <p id="capability-status" class="result-status" role="status" aria-live="polite">Checking for the optional Capability Map…</p>
+        <div class="capability-layout">
+          <aside class="capability-browser" aria-labelledby="capability-list-heading">
+            <div class="pane-heading"><span>01</span><h3 id="capability-list-heading">All profiles</h3></div>
+            <label for="capability-search">Search profiles and declared capabilities</label>
+            <div class="search-row compact-search"><input id="capability-search" type="search" autocomplete="off" placeholder="Capability, input, output, or role…" disabled><button id="clear-capability-search" class="quiet" type="button" disabled>Clear</button></div>
+            <p id="capability-list-status" class="result-status" role="status" aria-live="polite"></p>
+            <div id="capability-list" class="capability-list"></div>
+          </aside>
+          <article class="capability-detail" aria-labelledby="capability-detail-heading">
+            <div class="pane-heading"><span>02</span><h3 id="capability-detail-heading" tabindex="-1">Selected profile</h3></div>
+            <div id="capability-detail-body" class="workspace-empty"><p>Select a profile to inspect its source-grounded declarations.</p></div>
+            <button id="add-capability-mashup" class="primary" type="button" disabled>Add profile to Conceptual Mashup</button>
+          </article>
+          <section class="capability-map-panel" aria-labelledby="capability-map-heading">
+            <div class="pane-heading"><span>03</span><h3 id="capability-map-heading">Declared relationships</h3></div>
+            <p class="control-help">Bounded to 18 nodes. The complete profile remains in the adjacent detail.</p>
+            <svg id="capability-graph" viewBox="0 0 900 560" role="group" aria-labelledby="capability-svg-title capability-svg-desc"><title id="capability-svg-title">Declared Capability Profile relationships</title><desc id="capability-svg-desc">Select a profile to show its declared features, capabilities, inputs, outputs, roles, and complements.</desc></svg>
+          </section>
+        </div>
+        <section class="mashup-builder" aria-labelledby="mashup-heading">
+          <div class="pane-heading"><span>04</span><h3 id="mashup-heading">Conceptual Mashup</h3></div>
+          <p class="mashup-disclaimer"><strong>Concept only.</strong> This deterministic juxtaposition repeats source-declared roles and features. It does not infer runtime, API, build, license, behavioral, security, or deployment compatibility.</p>
+          <div id="mashup-tray" class="mashup-tray"><p class="empty compact">No profiles selected. Add up to 4 profiles.</p></div>
+          <button id="clear-mashup" class="quiet" type="button" disabled>Clear Conceptual Mashup</button>
+          <svg id="mashup-graph" viewBox="0 0 900 560" role="group" aria-labelledby="mashup-svg-title mashup-svg-desc"><title id="mashup-svg-title">Conceptual Mashup of selected profiles</title><desc id="mashup-svg-desc">No profiles selected. This graph never implies runtime compatibility.</desc></svg>
+          <p class="mashup-disclaimer">Visible lines represent only the selected profiles’ declared roles, features, and named complements; they are not compatibility claims.</p>
+        </section>
+      </section>
+
+      <div class="section-head affinity-heading"><div><span class="kicker">Host-centered evidence projection</span><h2>Compatibility workbench</h2></div><p>Explore canonical Affinities plus optional hash-bound static compatibility observations, select exact Contribution Pieces, and build a bounded Recombination Brief. Every connection remains a lead, not verified runtime compatibility.</p></div>
+      <div class="graph-notice"><strong>Why the graph starts with a Host</strong><p>The complete Cabinet includes a large documentation star. A Host-centered view keeps each directional relationship, source observation, and unresolved check legible without pretending global connectedness means semantic fit.</p><p id="compatibility-status" class="result-status" role="status" aria-live="polite">Checking for the optional exact-corpus compatibility sidecar…</p></div>
+      <div class="graph-workspace">
+        <aside class="graph-controls" aria-labelledby="graph-controls-heading">
+          <div class="pane-heading"><span>01</span><h3 id="graph-controls-heading">Choose a Host</h3></div>
+          <label for="graph-host">Host Exhibit with Cabinet or static/policy Needs</label>
+          <select id="graph-host" disabled><option>Loading Hosts…</option></select>
+          <label for="graph-search">Find an evidence-linked donor</label>
+          <div class="search-row compact-search"><input id="graph-search" type="search" placeholder="Search donor names…" autocomplete="off" disabled><button id="clear-graph-search" class="quiet" type="button" disabled>Clear</button></div>
+          <p id="graph-status" class="result-status" role="status" aria-live="polite">Loading the Affinity projection…</p>
+          <div id="graph-donor-list" class="graph-donor-list" aria-label="Evidence-linked donor Exhibits"></div>
+        </aside>
+
+        <section class="graph-map-panel" aria-labelledby="graph-map-heading">
+          <div class="pane-heading"><span>02</span><h3 id="graph-map-heading">Affinity map</h3></div>
+          <p class="control-help">The visual map shows up to 24 currently filtered donors. The adjacent donor list remains the complete keyboard-accessible view.</p>
+          <svg id="affinity-graph" viewBox="0 0 900 560" role="group" aria-labelledby="graph-svg-title graph-svg-desc">
+            <title id="graph-svg-title">Host-centered directional Affinity graph</title>
+            <desc id="graph-svg-desc">Choose a Host to show its evidence-linked donor Exhibits.</desc>
+          </svg>
+          <div class="graph-legend"><span><i class="legend-host"></i>Host</span><span><i class="legend-recipe"></i>Recipe-backed donor</span><span><i class="legend-donor"></i>Evidence-linked donor</span><span><i class="legend-static"></i>Static-observation lead</span></div>
+        </section>
+
+        <aside class="piece-picker" aria-labelledby="piece-picker-heading">
+          <div class="pane-heading"><span>03</span><h3 id="piece-picker-heading" tabindex="-1">Choose elements</h3></div>
+          <div id="piece-options" class="workspace-empty"><p>Select a donor node or list item to inspect its Contribution Pieces.</p></div>
+          <h4>Selected Arrangement</h4>
+          <div id="selection-tray" class="selection-tray"><p class="empty compact">No Pieces selected. Choose up to 8 Pieces from up to 4 donors.</p></div>
+          <button id="clear-graph-selection" class="quiet" type="button" disabled>Clear selected Pieces</button>
+        </aside>
+      </div>
+
+      <section class="brief-builder" aria-labelledby="brief-heading">
+        <div class="pane-heading"><span>04</span><h3 id="brief-heading">Build a Recombination Brief</h3></div>
+        <div class="brief-grid">
+          <div>
+            <label for="intent-note">Intent Note — what outcome should the review aim for?</label>
+            <textarea id="intent-note" rows="5" maxlength="2000" placeholder="Optional: explain how to adapt the selected Contribution Pieces toward the Host goals." disabled></textarea>
+            <p id="intent-count" class="result-status">0 / 2,000 characters</p>
+            <p class="control-help">Your Intent changes emphasis only. This app makes no changes; the copied Brief tells a coding agent to treat snapshot text as untrusted and verify source, licenses, dependencies, and APIs before implementing the selected adaptation.</p>
+          </div>
+          <div>
+            <label for="brief-preview">Recombination Brief preview</label>
+            <textarea id="brief-preview" rows="16" readonly aria-describedby="brief-size brief-status" placeholder="Select Contribution Pieces to build a deterministic Brief."></textarea>
+            <p id="brief-size" class="result-status">0 bytes</p>
+          </div>
+        </div>
+        <div class="brief-actions"><button id="copy-brief" class="primary" type="button" disabled>Copy Recombination Brief</button></div>
+        <p id="brief-status" class="result-status" role="status" aria-live="polite">Choose at least one Contribution Piece to generate a Brief.</p>
+      </section>
+    </section>
+
     <section id="method" class="view hidden" role="tabpanel" aria-labelledby="tab-method">
       <div class="section-head"><div><span class="kicker">A legible instrument</span><h2>Method</h2></div></div>
       <div class="method-grid">
         <article><b>01</b><h3>Observe, never run</h3><p>The scanner reads bounded text files. It does not import, build, install, evaluate, or execute project code.</p></article>
         <article><b>02</b><h3>Arrange atomic evidence</h3><p>A Cupboard piece is a donor observation connected to one host direction. Multi-project arrangements preserve every path, line, rule, and caution.</p></article>
         <article><b>03</b><h3>Steer explicitly</h3><p>Breadth, novelty, compatibility, risk, focus, donor preferences, locks, and exclusions change deterministic ranking. They never invent evidence.</p></article>
-        <article><b>04</b><h3>Keep claims bounded</h3><p>“Fits” means the displayed snapshot signals align. It never claims buildability, API equivalence, license compatibility, or correctness.</p></article>
+        <article><b>04</b><h3>Keep claims bounded</h3><p>Scores and suggestions are heuristics grounded in observed Evidence. They never claim project quality, buildability, API equivalence, license compatibility, or correctness.</p></article>
+        <article><b>05</b><h3>Project, then copy</h3><p>The Mashup map, canonical Affinity projection, Conceptual Mashup, and Recombination Brief are browser-local projections. They do not alter the Cabinet Snapshot, call a model, execute code, or persist workspace state.</p></article>
       </div>
       <details><summary>Snapshot limits</summary><pre id="limits"></pre></details>
     </section>

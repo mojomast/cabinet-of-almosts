@@ -602,6 +602,8 @@ def validate_snapshot(value: Any) -> dict[str, Any]:
 
 class CabinetHandler(BaseHTTPRequestHandler):
     snapshot: bytes = b"{}\n"
+    compatibility: bytes | None = None
+    capability_map: bytes | None = None
     static_dir = Path(__file__).with_name("static")
     server_version = "CabinetOfAlmosts/0.1"
 
@@ -611,7 +613,7 @@ class CabinetHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
         self.end_headers()
         if not head:
             self.wfile.write(body)
@@ -624,6 +626,14 @@ class CabinetHandler(BaseHTTPRequestHandler):
                   "/style.css": ("style.css", "text/css; charset=utf-8")}
         if path == "/cabinet.json":
             self._send(200, self.snapshot, "application/json; charset=utf-8", head); return
+        if path == "/compatibility.json":
+            if self.compatibility is None:
+                self._send(200, b"null\n", "application/json; charset=utf-8", head); return
+            self._send(200, self.compatibility, "application/json; charset=utf-8", head); return
+        if path == "/capability-map.json":
+            if self.capability_map is None:
+                self._send(404, b"Not found\n", "text/plain; charset=utf-8", head); return
+            self._send(200, self.capability_map, "application/json; charset=utf-8", head); return
         if path in routes:
             filename, content_type = routes[path]
             try:
@@ -642,15 +652,37 @@ class CabinetHandler(BaseHTTPRequestHandler):
         sys.stderr.write("cabinet http: " + fmt % args + "\n")
 
 
-def make_server(snapshot: bytes, port: int) -> ThreadingHTTPServer:
+def make_server(snapshot: bytes, port: int, compatibility: bytes | None = None,
+                capability_map: bytes | None = None) -> ThreadingHTTPServer:
     if not 0 <= port <= 65535:
         raise ValueError("port must be between 0 and 65535")
-    handler = type("BoundCabinetHandler", (CabinetHandler,), {"snapshot": snapshot})
+    if compatibility is not None or capability_map is not None:
+        parsed_snapshot = validate_snapshot(json.loads(snapshot))
+        snapshot = canonical_bytes(parsed_snapshot)
+    if compatibility is not None:
+        import compatibility as compatibility_module
+        if len(compatibility) > compatibility_module.MAX_INPUT_BYTES:
+            raise ValueError(
+                f"invalid compatibility sidecar: input exceeds {compatibility_module.MAX_INPUT_BYTES} bytes")
+        parsed_compatibility = compatibility_module.validate(
+            json.loads(compatibility), parsed_snapshot, input_size=len(compatibility))
+        compatibility = compatibility_module.canonical_bytes(parsed_compatibility)
+    if capability_map is not None:
+        import capability_map as capability_map_module
+        if len(capability_map) > capability_map_module.MAX_INPUT_BYTES:
+            raise ValueError(f"invalid capability map: input exceeds {capability_map_module.MAX_INPUT_BYTES} bytes")
+        parsed_capability_map = capability_map_module.validate(
+            json.loads(capability_map), parsed_snapshot, input_size=len(capability_map))
+        capability_map = capability_map_module.canonical_bytes(parsed_capability_map)
+    handler = type("BoundCabinetHandler", (CabinetHandler,), {
+        "snapshot": snapshot, "compatibility": compatibility, "capability_map": capability_map,
+    })
     return ThreadingHTTPServer(("127.0.0.1", port), handler)
 
 
-def serve(snapshot: bytes, port: int) -> None:
-    server = make_server(snapshot, port)
+def serve(snapshot: bytes, port: int, compatibility: bytes | None = None,
+          capability_map: bytes | None = None) -> None:
+    server = make_server(snapshot, port, compatibility, capability_map)
     print(f"Cabinet open at http://127.0.0.1:{server.server_port}/", flush=True)
     try: server.serve_forever()
     except KeyboardInterrupt: pass
@@ -699,6 +731,8 @@ def parser() -> argparse.ArgumentParser:
     serve_p.add_argument("--git-status", action="store_true")
     snap_p = sub.add_parser("serve-snapshot", help="serve an existing snapshot")
     snap_p.add_argument("file"); snap_p.add_argument("--port", type=int, default=8765)
+    snap_p.add_argument("--compatibility", help="validated compatibility-observation sidecar")
+    snap_p.add_argument("--capability-map", help="validated project capability-map sidecar")
     return result
 
 
@@ -719,7 +753,28 @@ def main(argv: list[str] | None = None) -> int:
         else:
             data = Path(args.file).read_bytes()
             parsed = validate_snapshot(json.loads(data))
-            serve(canonical_bytes(parsed), args.port)
+            compatibility_payload = None
+            if args.compatibility:
+                import compatibility as compatibility_module
+                with Path(args.compatibility).open("rb") as stream:
+                    raw_compatibility = stream.read(compatibility_module.MAX_INPUT_BYTES + 1)
+                if len(raw_compatibility) > compatibility_module.MAX_INPUT_BYTES:
+                    raise ValueError(
+                        f"invalid compatibility sidecar: input exceeds {compatibility_module.MAX_INPUT_BYTES} bytes")
+                sidecar = compatibility_module.validate(
+                    json.loads(raw_compatibility), parsed, input_size=len(raw_compatibility))
+                compatibility_payload = compatibility_module.canonical_bytes(sidecar)
+            capability_map_payload = None
+            if args.capability_map:
+                import capability_map as capability_map_module
+                with Path(args.capability_map).open("rb") as stream:
+                    capability_map_payload = stream.read(capability_map_module.MAX_INPUT_BYTES + 1)
+                if len(capability_map_payload) > capability_map_module.MAX_INPUT_BYTES:
+                    raise ValueError(
+                        f"invalid capability map: input exceeds {capability_map_module.MAX_INPUT_BYTES} bytes")
+            # make_server performs the single fail-before-bind validation and
+            # public redaction pass for each optional sidecar.
+            serve(canonical_bytes(parsed), args.port, compatibility_payload, capability_map_payload)
     except (ValueError, OSError, json.JSONDecodeError) as exc:
         print(f"error: {exc}", file=sys.stderr); return 2
     return 0

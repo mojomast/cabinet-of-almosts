@@ -76,6 +76,7 @@ def main() -> int:
     parser.add_argument("--builds-root", default=str(BUILDS_ROOT))
     parser.add_argument("--manifest", default=str(DEFAULT_MANIFEST))
     parser.add_argument("--output", required=True)
+    parser.add_argument("--compatibility-output", help="write a hash-bound static compatibility sidecar")
     parser.add_argument("--git-status", action="store_true")
     args = parser.parse_args()
 
@@ -107,7 +108,21 @@ def main() -> int:
     }
     cabinet.validate_snapshot(snapshot)
     payload = cabinet.canonical_bytes(snapshot)
+    compatibility_output = None
+    compatibility_payload = None
+    sidecar = None
+    if args.compatibility_output:
+        import compatibility
+
+        compatibility_output = cabinet.output_path_is_safe(args.compatibility_output, roots)
+        if compatibility_output.resolve(strict=False) == output.resolve(strict=False):
+            raise ValueError("snapshot and compatibility outputs must be different paths")
+        sidecar = compatibility.hydrate(snapshot, {record["project"]: record["path"] for record in records})
+        compatibility_payload = compatibility.canonical_bytes(sidecar)
     cabinet.atomic_write(output, payload)
+    if compatibility_output is not None and compatibility_payload is not None and sidecar is not None:
+        cabinet.atomic_write(compatibility_output, compatibility_payload)
+        print(f"Wrote {compatibility_output} with {len(sidecar['profiles'])} profiles and {len(sidecar['compatibility_edges'])} compatibility observations ({len(compatibility_payload)} bytes)")
     print(f"Wrote {output} with {len(records)} one-commit autonomous GitHub repositories ({len(payload)} bytes)")
     return 0
 
