@@ -305,7 +305,7 @@ if (!first.pieces.every(piece => piece.factors.length && piece.cautions.length &
         with tempfile.NamedTemporaryFile("wb", suffix=".json") as snapshot_file, tempfile.NamedTemporaryFile("wb", suffix=".json") as sidecar_file:
             snapshot_file.write(cabinet.canonical_bytes(snapshot)); snapshot_file.flush()
             sidecar_file.write(compatibility.canonical_bytes(first)); sidecar_file.flush()
-            script = r'''const fs=require("fs"); const engine=require(process.argv[1]); const data=JSON.parse(fs.readFileSync(process.argv[2])); const sidecar=JSON.parse(fs.readFileSync(process.argv[3])); const indexes=engine.buildIndexes(data); const host=sidecar.profiles.find(item=>item.name==="compat-host"); const graph=engine.graphForHost(data,indexes,host.exhibit_id,sidecar); const pieces=graph.relationships.flatMap(item=>item.pieces).filter(item=>item.compatibilityEdgeId); if(!pieces.length) throw new Error("static observations did not hydrate graph"); const brief=engine.buildRecombinationBrief(data,indexes,{hostId:host.exhibit_id,pieceKeys:[pieces[0].key]},"Inspect the static lead.",sidecar); if(!brief.includes(pieces[0].compatibilityEdgeId)||!brief.includes('"compatibility_verified":false')||!brief.includes('"source_observations"')||!brief.includes('"snapshot_text_untrusted":true')) throw new Error("brief lost actionable compatibility provenance or caution");'''
+            script = r'''const fs=require("fs"); const engine=require(process.argv[1]); const data=JSON.parse(fs.readFileSync(process.argv[2])); const sidecar=JSON.parse(fs.readFileSync(process.argv[3])); const indexes=engine.buildIndexes(data); const host=sidecar.profiles.find(item=>item.name==="compat-host"); const graph=engine.graphForHost(data,indexes,host.exhibit_id,sidecar); const expected=sidecar.compatibility_edges.filter(item=>item.to_exhibit_id===host.exhibit_id); const staticRelationships=graph.relationships.filter(item=>item.compatibilityEdgeIds.length); if(staticRelationships.length!==expected.length||staticRelationships.some(item=>item.affinityId!==null||item.compatibilityEdgeIds.length!==1||item.key!==`static:${item.compatibilityEdgeIds[0]}`)) throw new Error("static observations were not independently identified by edge"); const pieces=staticRelationships.flatMap(item=>item.pieces).filter(item=>item.compatibilityEdgeId); if(!pieces.length) throw new Error("static observations did not hydrate graph"); const brief=engine.buildRecombinationBrief(data,indexes,{hostId:host.exhibit_id,pieceKeys:[pieces[0].key]},"Inspect the static lead.",sidecar); if(!brief.includes(pieces[0].compatibilityEdgeId)||!brief.includes('"compatibility_verified":false')||!brief.includes('"source_observations"')||!brief.includes('"snapshot_text_untrusted":true')) throw new Error("brief lost actionable compatibility provenance or caution");'''
             result = subprocess.run(["node", "-e", script, str(static / "cupboard.js"), snapshot_file.name, sidecar_file.name], capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
 
@@ -436,13 +436,17 @@ for (const [index, mutation] of mutations.entries()) { let rejected = false; try
         app = (static / "app.js").read_text(encoding="utf-8")
         for element_id in (
             "tab-graph", "graph", "graph-host", "graph-search", "affinity-graph",
-            "graph-donor-list", "piece-options", "selection-tray", "intent-note",
+            "graph-donor-list", "relationship-detail", "piece-options", "selection-tray", "intent-note",
             "brief-preview", "copy-brief", "brief-status",
         ):
             self.assertIn(f'id="{element_id}"', html)
         self.assertIn("Recombination Brief", html)
         self.assertIn("not verified compatibility", html)
         self.assertIn("renderAffinityGraph", app)
+        self.assertIn("activeRelationshipKey", app)
+        self.assertIn("renderRelationshipDetail", app)
+        self.assertIn('"aria-controls": "relationship-detail"', app)
+        self.assertIn('heading.id = "relationship-detail-heading"', app)
         self.assertIn("navigator.clipboard.writeText", app)
 
     def test_capability_ui_contract_is_complete_accessible_and_bounded(self):
@@ -456,7 +460,7 @@ for (const [index, mutation] of mutations.entries()) { let rejected = false; try
             "capability-list-heading", "capability-search", "clear-capability-search",
             "capability-list-status", "capability-list", "capability-detail-heading",
             "capability-detail-body", "add-capability-mashup", "capability-map-heading",
-            "capability-graph", "capability-svg-title", "capability-svg-desc",
+            "capability-graph", "capability-svg-title", "capability-svg-desc", "capability-node-detail",
             "mashup-heading", "mashup-selection-status", "mashup-tray", "clear-mashup",
             "mashup-features-heading", "mashup-feature-controls", "mashup-visual-heading",
             "mashup-graph", "mashup-svg-title", "mashup-svg-desc",
@@ -489,6 +493,9 @@ for (const [index, mutation] of mutations.entries()) { let rejected = false; try
         self.assertIn('role="status" aria-live="polite"', html)
         self.assertIn('checkbox.type = "checkbox"', app)
         self.assertIn('event.key === "Enter" || event.key === " "', app)
+        self.assertIn("inspectCapabilityNode", app)
+        self.assertIn('"aria-controls": "capability-node-detail"', app)
+        self.assertIn('heading.id = "capability-node-detail-heading"', app)
 
         list_renderer = app.split("function renderCapabilityList()", 1)[1].split("function selectCapabilityProfile", 1)[0]
         self.assertIn("capabilityIndexes.profiles.filter", list_renderer)
@@ -634,6 +641,8 @@ const host = data.exhibits.find(item => item.needs.length && (indexes.affinities
 if (!host) throw new Error("fixture has no graph Host");
 const graph = engine.graphForHost(data, indexes, host.id);
 if (graph.hostId !== host.id || !graph.relationships.length) throw new Error("Host graph missing relationships");
+if (!graph.relationships.every(item => typeof item.key === "string" && item.key.length)) throw new Error("graph relationship lacks stable identity");
+if (new Set(graph.relationships.map(item => item.key)).size !== graph.relationships.length) throw new Error("graph relationship identities are not unique");
 if (!engine.stableJson(JSON.parse('{"__proto__":{"kept":true},"safe":1}')).includes('"__proto__"')) throw new Error("canonical JSON lost __proto__ data");
 for (const relationship of graph.relationships.filter(item => item.recipeId)) {
   const recipe = data.resurrection_recipes.find(item => item.id === relationship.recipeId);
@@ -645,6 +654,8 @@ if (recipe) {
   const duplicateGraph = engine.graphForHost(mutated, engine.buildIndexes(mutated), recipe.host_exhibit_id);
   const attributed = duplicateGraph.relationships.filter(item => item.recipeId === recipe.id);
   if (attributed.length !== 1 || attributed[0].affinityId !== recipe.affinity_id) throw new Error("recipe leaked across same-pair Affinities");
+  const samePair = duplicateGraph.relationships.filter(item => item.donorId === recipe.donor_exhibit_id);
+  if (samePair.length < 2 || new Set(samePair.map(item => item.key)).size !== samePair.length) throw new Error("same-donor Affinities cannot be independently selected");
 }
 const allPieces = graph.relationships.flatMap(item => item.pieces);
 if (!allPieces.length || !allPieces.every(item => item.key && item.sourceEvidenceId && item.affinityId)) throw new Error("graph Pieces lack provenance");

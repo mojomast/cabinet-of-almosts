@@ -257,7 +257,7 @@
       }));
       pieces.sort((a, b) => compareText(a.path, b.path) || Number(a.line || 1e9) - Number(b.line || 1e9) || compareText(a.label, b.label) || compareText(a.sourceEvidenceId, b.sourceEvidenceId));
       return {
-        affinityId: affinity.id, donorId: donor.id, hostId, recipeId: recipe?.id || null, compatibilityEdgeIds: [],
+        key: `affinity:${affinity.id}`, affinityId: affinity.id, donorId: donor.id, hostId, recipeId: recipe?.id || null, compatibilityEdgeIds: [], sharedEcosystems: [],
         need: affinity.matches[0]?.need || "unknown", provision: affinity.matches[0]?.provision || "unknown",
         strength: affinity.strength, sharedLanguages, donorDegree: donorDegrees.get(donor.id) || 0,
         donorReusability: donor.scores?.reusability?.value || 0, pieces,
@@ -267,7 +267,6 @@
       const profiles = new Map(compatibility.profiles.map((profile) => [profile.exhibit_id, profile]));
       const records = new Map();
       compatibility.profiles.forEach((profile) => ["manifests", "licenses", "interfaces", "observations", "provisions", "host_needs", "compatibility_blockers"].forEach((field) => (profile[field] || []).forEach((record) => records.set(record.id, record))));
-      const byDonor = new Map(relationships.map((relationship) => [relationship.donorId, relationship]));
       compatibility.compatibility_edges.filter((edge) => edge.to_exhibit_id === hostId).forEach((edge) => {
         const donor = indexes.exhibits.get(edge.from_exhibit_id); const donorProfile = profiles.get(edge.from_exhibit_id); const hostProfile = profiles.get(hostId);
         if (!donor || !donorProfile || !hostProfile) return;
@@ -275,11 +274,8 @@
         const donorRecordIds = new Set(["manifests", "licenses", "interfaces", "observations", "provisions"].flatMap((field) => (donorProfile[field] || []).map((item) => item.id)));
         const support = (edge.support_ids || []).filter((id) => donorRecordIds.has(id)).map((id) => records.get(id)).filter(Boolean);
         const sharedEcosystems = [...new Set((hostProfile.ecosystems || []).filter((item) => (donorProfile.ecosystems || []).includes(item)))].sort(compareText);
-        let relationship = byDonor.get(donor.id);
-        if (!relationship) {
-          relationship = { affinityId: null, donorId: donor.id, hostId, recipeId: null, compatibilityEdgeIds: [], need: need.kind, provision: "static observations", strength: 0, sharedLanguages: sharedEcosystems, donorDegree: 0, donorReusability: donor.scores?.reusability?.value || 0, pieces: [] };
-          relationships.push(relationship); byDonor.set(donor.id, relationship);
-        }
+        const relationship = { key: `static:${edge.id}`, affinityId: null, donorId: donor.id, hostId, recipeId: null, compatibilityEdgeIds: [], need: need.kind, provision: "static observations", strength: 0, sharedLanguages: [], sharedEcosystems, donorDegree: 0, donorReusability: donor.scores?.reusability?.value || 0, pieces: [] };
+        relationships.push(relationship);
         relationship.compatibilityEdgeIds.push(edge.id);
         support.forEach((source) => {
           const expanded = [source, ...(source.support_ids || []).map((id) => records.get(id)).filter((record) => record && donorRecordIds.has(record.id))];

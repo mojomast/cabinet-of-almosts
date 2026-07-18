@@ -310,7 +310,7 @@ function wireControls() {
   $("clear-comparison").addEventListener("click", () => { workspace.compare.clear(); renderComparison(); syncCompareButton(); });
 }
 
-const graphWorkspace = { hostId: null, graph: null, activeDonorId: null, selected: new Map() };
+const graphWorkspace = { hostId: null, graph: null, activeRelationshipKey: null, selected: new Map() };
 const svgNode = (tag, attributes = {}, text) => {
   const element = document.createElementNS("http://www.w3.org/2000/svg", tag);
   Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, String(value)));
@@ -334,7 +334,7 @@ function initializeGraph(preserveState = false) {
     const detected = CabinetCupboard.detectedGoals(host).map((goal) => GOAL_LABELS[goal] || titleCase(goal));
     const profile = workspace.compatibility?.profiles?.find((item) => item.exhibit_id === host.id);
     const directions = detected.length ? detected.join(", ") : `${profile?.host_needs?.length || 0} static/policy Needs`;
-    const option = node("option", `${titleCase(host.name)} — ${directions} · ${graph.relationships.length} donors`); option.value = host.id; add(select, option);
+    const option = node("option", `${titleCase(host.name)} — ${directions} · ${graph.relationships.length} relationships`); option.value = host.id; add(select, option);
   });
   select.disabled = !choices.length; $("graph-search").disabled = !choices.length;
   if (!choices.length) { $("graph-status").textContent = "No Hosts with directional Affinities or static compatibility observations were found."; return; }
@@ -352,44 +352,67 @@ function graphRelationships() {
   return (graphWorkspace.graph?.relationships || []).filter((relationship) => titleCase(workspace.indexes.exhibits.get(relationship.donorId)?.name).toLowerCase().includes(query));
 }
 
-function activateGraphDonor(donorId) {
-  graphWorkspace.activeDonorId = donorId; renderAffinityGraph(false); renderPieceOptions();
-  const donor = workspace.indexes.exhibits.get(donorId); $("piece-picker-heading").focus?.();
-  $("brief-status").textContent = `Inspecting Contribution Pieces from ${titleCase(donor?.name)}. Select only the elements you want in the Brief.`;
+function relationshipKind(relationship) {
+  if (!relationship) return "donor relationship";
+  if (relationship.affinityId && relationship.compatibilityEdgeIds?.length) return `${relationship.recipeId ? "Recipe-backed Affinity" : "Directional Affinity"} + static observations`;
+  if (relationship.recipeId) return "Recipe-backed Affinity";
+  if (relationship.affinityId) return "Directional Affinity";
+  return "Static compatibility observations";
+}
+
+function activateGraphDonor(relationshipKey, source = "list") {
+  graphWorkspace.activeRelationshipKey = relationshipKey; renderAffinityGraph(false);
+  const relationship = graphWorkspace.graph?.relationships.find((item) => item.key === relationshipKey); const donor = workspace.indexes.exhibits.get(relationship?.donorId);
+  const scope = source === "svg" ? $("affinity-graph") : $("graph-donor-list"); [...scope.querySelectorAll("[data-relationship-key]")].find((item) => item.dataset.relationshipKey === relationshipKey)?.focus();
+  $("brief-status").textContent = `Inspecting ${relationshipKind(relationship)} from ${titleCase(donor?.name)}: ${titleCase(relationship?.provision)} toward ${titleCase(relationship?.need)}. Details updated; select only the elements you want in the Brief.`;
+}
+
+function renderRelationshipDetail() {
+  const wrap = clear($("relationship-detail")); const relationship = graphWorkspace.graph?.relationships.find((item) => item.key === graphWorkspace.activeRelationshipKey);
+  if (!relationship) { wrap.className = "graph-click-detail workspace-empty"; const heading = node("h4", "Click a donor relationship"); heading.id = "relationship-detail-heading"; add(wrap, heading, node("p", "Select a donor node or list item to inspect its direction, evidence witness, and limitations.")); return; }
+  wrap.className = "graph-click-detail"; const donor = workspace.indexes.exhibits.get(relationship.donorId); const host = workspace.indexes.exhibits.get(relationship.hostId); const selectedCount = relationship.pieces.filter((piece) => graphWorkspace.selected.has(piece.key)).length;
+  const heading = node("h4", `${titleCase(donor?.name)} → ${titleCase(host?.name)}`); heading.id = "relationship-detail-heading"; const directions = [...new Set(relationship.pieces.map((piece) => `${titleCase(piece.provision)} → ${titleCase(piece.need)}`))];
+  add(wrap, node("span", relationshipKind(relationship), "kicker"), heading, node("p", `This relationship contains ${directions.length} bounded donor-to-Host direction${directions.length === 1 ? "" : "s"}. The arrow records a lead; it does not establish software compatibility.`));
+  const facts = node("dl", undefined, "relationship-facts"); const fact = (term, value) => add(facts, node("dt", term), node("dd", value));
+  fact("Matched directions", directions.join(" · ") || `${titleCase(relationship.provision)} → ${titleCase(relationship.need)}`); fact("Provenance IDs", relationship.affinityId ? `Canonical Affinity ${relationship.affinityId}${relationship.recipeId ? ` · Recipe ${relationship.recipeId}` : ""}` : `Static observations ${relationship.compatibilityEdgeIds.join(", ") || "recorded"}`);
+  fact("Contribution Pieces", `${relationship.pieces.length} available · ${selectedCount} selected`); fact("Shared observed languages", relationship.sharedLanguages.length ? relationship.sharedLanguages.join(", ") : "None recorded"); if (relationship.sharedEcosystems?.length) fact("Shared observed ecosystems", relationship.sharedEcosystems.join(", ")); add(wrap, facts);
+  const allWitnesses = [...new Set(relationship.pieces.map((piece) => { const witnessId = piece.sourceEvidenceId || piece.sourceObservationIds?.join(", ") || piece.compatibilityEdgeId; return `${piece.label}${piece.path ? ` · ${piece.path}${piece.line ? `:${piece.line}` : ""}` : ""}${witnessId ? ` · Evidence ${witnessId}` : ""}`; }))]; const witnesses = allWitnesses.slice(0, 4); if (witnesses.length) { add(wrap, node("h5", "Source witnesses")); const list = node("ul", undefined, "relationship-witnesses"); witnesses.forEach((item) => add(list, node("li", item))); add(wrap, list); if (allWitnesses.length > witnesses.length) add(wrap, node("p", `Showing ${witnesses.length} of ${allWitnesses.length} source witnesses. Inspect the Contribution Pieces below for the complete relationship.`, "control-help")); }
+  const allCautions = [...new Set(relationship.pieces.flatMap((piece) => piece.cautions || []))]; const cautions = allCautions.slice(0, 4); if (cautions.length) { add(wrap, node("h5", "Limitations")); const list = node("ul", undefined, "relationship-limitations"); cautions.forEach((item) => add(list, node("li", item))); add(wrap, list); if (allCautions.length > cautions.length) add(wrap, node("p", `Showing ${cautions.length} of ${allCautions.length} distinct limitations. Inspect each Contribution Piece for its complete cautions.`, "control-help")); }
 }
 
 function renderGraphSvg(relationships) {
   const svg = clear($("affinity-graph"));
-  add(svg, svgNode("title", { id: "graph-svg-title" }, "Host-centered directional Affinity graph"), svgNode("desc", { id: "graph-svg-desc" }, `Donor Exhibits point toward Host ${exhibitName(graphWorkspace.hostId)}. The map shows ${Math.min(24, relationships.length)} of ${relationships.length} filtered donors.`));
+  add(svg, svgNode("title", { id: "graph-svg-title" }, "Host-centered directional Affinity graph"), svgNode("desc", { id: "graph-svg-desc" }, `Donor Exhibits point toward Host ${exhibitName(graphWorkspace.hostId)}. The map shows ${Math.min(24, relationships.length)} of ${relationships.length} filtered relationships.`));
   const defs = svgNode("defs"); const marker = svgNode("marker", { id: "graph-arrow", markerWidth: 8, markerHeight: 8, refX: 7, refY: 4, orient: "auto", markerUnits: "strokeWidth" }); add(marker, svgNode("path", { d: "M0,0 L8,4 L0,8 z", class: "graph-arrowhead" })); add(defs, marker); add(svg, defs);
   const center = { x: 450, y: 280 }; const visible = relationships.slice(0, 24); const radius = visible.length < 9 ? 200 : 225;
   visible.forEach((relationship, index) => {
     const angle = (-Math.PI / 2) + (Math.PI * 2 * index / Math.max(1, visible.length)); const x = center.x + Math.cos(angle) * radius; const y = center.y + Math.sin(angle) * radius;
-    add(svg, svgNode("line", { x1: x, y1: y, x2: center.x, y2: center.y, class: `graph-edge${relationship.recipeId ? " recipe-edge" : ""}${relationship.compatibilityEdgeIds?.length ? " compatibility-edge" : ""}`, "marker-end": "url(#graph-arrow)" }));
-    const group = svgNode("g", { class: `graph-node donor-node${graphWorkspace.activeDonorId === relationship.donorId ? " active" : ""}${relationship.recipeId ? " recipe-node" : ""}`, tabindex: 0, role: "button", "aria-label": `${exhibitName(relationship.donorId)}, ${relationship.pieces.length} Contribution Pieces${relationship.recipeId ? ", recipe-backed" : ""}` });
-    add(group, svgNode("circle", { cx: x, cy: y, r: 30 }), svgNode("text", { x, y: y + 4, "text-anchor": "middle" }, exhibitName(relationship.donorId).slice(0, 11)));
-    group.addEventListener("click", () => activateGraphDonor(relationship.donorId)); group.addEventListener("keydown", (event) => { if (["Enter", " "].includes(event.key)) { event.preventDefault(); activateGraphDonor(relationship.donorId); } }); add(svg, group);
+    const active = graphWorkspace.activeRelationshipKey === relationship.key;
+    add(svg, svgNode("line", { x1: x, y1: y, x2: center.x, y2: center.y, class: `graph-edge${active ? " active" : ""}${relationship.recipeId ? " recipe-edge" : ""}${relationship.compatibilityEdgeIds?.length ? " compatibility-edge" : ""}`, "marker-end": "url(#graph-arrow)" }));
+    const group = svgNode("g", { class: `graph-node donor-node${active ? " active" : ""}${relationship.recipeId ? " recipe-node" : ""}`, tabindex: 0, role: "button", "data-relationship-key": relationship.key, "aria-current": active ? "true" : "false", "aria-controls": "relationship-detail", "aria-label": `${exhibitName(relationship.donorId)}; ${relationshipKind(relationship)}; ${titleCase(relationship.provision)} toward ${titleCase(relationship.need)}; ${relationship.pieces.length} Contribution Pieces` });
+    add(group, svgNode("title", {}, `${exhibitName(relationship.donorId)} → ${exhibitName(relationship.hostId)} — ${relationshipKind(relationship)} — ${relationship.provision} toward ${relationship.need}`), svgNode("circle", { cx: x, cy: y, r: 30 }), svgNode("text", { x, y: y + 4, "text-anchor": "middle" }, exhibitName(relationship.donorId).slice(0, 11)));
+    group.addEventListener("click", () => activateGraphDonor(relationship.key, "svg")); group.addEventListener("keydown", (event) => { if (["Enter", " "].includes(event.key)) { event.preventDefault(); activateGraphDonor(relationship.key, "svg"); } }); add(svg, group);
   });
   const hostGroup = svgNode("g", { class: "graph-node host-node", role: "img", "aria-label": `Host ${exhibitName(graphWorkspace.hostId)}` }); add(hostGroup, svgNode("circle", { cx: center.x, cy: center.y, r: 54 }), svgNode("text", { x: center.x, y: center.y + 5, "text-anchor": "middle" }, exhibitName(graphWorkspace.hostId).slice(0, 16))); add(svg, hostGroup);
 }
 
 function renderAffinityGraph(resetDonor = false) {
   graphWorkspace.graph = CabinetCupboard.graphForHost(workspace.data, workspace.indexes, graphWorkspace.hostId, workspace.compatibility);
-  if (resetDonor) { graphWorkspace.activeDonorId = null; graphWorkspace.selected.clear(); renderSelectionTray(); }
+  if (resetDonor) { graphWorkspace.activeRelationshipKey = null; graphWorkspace.selected.clear(); renderSelectionTray(); }
   const relationships = graphRelationships(); const list = clear($("graph-donor-list"));
   relationships.forEach((relationship, index) => {
-    const donor = workspace.indexes.exhibits.get(relationship.donorId); const button = node("button", undefined, `graph-donor${graphWorkspace.activeDonorId === donor.id ? " active" : ""}`); button.type = "button"; button.dataset.donorId = donor.id;
+    const donor = workspace.indexes.exhibits.get(relationship.donorId); const active = graphWorkspace.activeRelationshipKey === relationship.key; const button = node("button", undefined, `graph-donor${active ? " active" : ""}`); button.type = "button"; button.dataset.relationshipKey = relationship.key; button.setAttribute("aria-current", active ? "true" : "false"); button.setAttribute("aria-controls", "relationship-detail");
     const labels = node("span"); add(labels, node("strong", titleCase(donor.name)), node("small", `${relationship.pieces.length} Piece${relationship.pieces.length === 1 ? "" : "s"} · ${relationship.need} ← ${relationship.provision}${relationship.sharedLanguages.length ? ` · shared ${relationship.sharedLanguages.join(", ")}` : ""}`));
-    const relationshipLabel = relationship.affinityId && relationship.compatibilityEdgeIds?.length ? `${relationship.recipeId ? "Recipe-backed Affinity" : "Affinity"} + static` : relationship.recipeId ? "Recipe-backed" : relationship.affinityId ? "Affinity" : "Static observations";
-    add(button, node("b", String(index + 1).padStart(2, "0")), labels, node("em", relationshipLabel)); button.addEventListener("click", () => activateGraphDonor(donor.id)); add(list, button);
+    const relationshipLabel = relationshipKind(relationship);
+    add(button, node("b", String(index + 1).padStart(2, "0")), labels, node("em", relationshipLabel)); button.addEventListener("click", () => activateGraphDonor(relationship.key, "list")); add(list, button);
   });
   if (!relationships.length) add(list, node("p", "No evidence-linked donors match this search. Clear it to restore the Host graph.", "empty compact"));
   const query = $("graph-search").value.trim(); $("clear-graph-search").disabled = !query;
   const staticCount = graphWorkspace.graph.relationships.reduce((total, relationship) => total + (relationship.compatibilityEdgeIds?.length || 0), 0);
-  $("graph-status").textContent = `${exhibitName(graphWorkspace.hostId)} has ${graphWorkspace.graph.relationships.length} bounded donor leads${staticCount ? `, including ${staticCount} static compatibility observations or policy hypotheses` : ""}. Showing ${relationships.length}${query ? " filtered" : ""}; the visual map displays ${Math.min(24, relationships.length)}.`;
+  $("graph-status").textContent = `${exhibitName(graphWorkspace.hostId)} has ${graphWorkspace.graph.relationships.length} bounded relationship leads${staticCount ? `, including ${staticCount} static compatibility observations or policy hypotheses` : ""}. Showing ${relationships.length}${query ? " filtered" : ""}; the visual map displays ${Math.min(24, relationships.length)}.`;
   renderGraphSvg(relationships);
-  if (graphWorkspace.activeDonorId && !relationships.some((item) => item.donorId === graphWorkspace.activeDonorId)) { graphWorkspace.activeDonorId = null; }
-  renderPieceOptions();
+  if (graphWorkspace.activeRelationshipKey && !relationships.some((item) => item.key === graphWorkspace.activeRelationshipKey)) { graphWorkspace.activeRelationshipKey = null; }
+  renderRelationshipDetail(); renderPieceOptions();
 }
 
 function toggleGraphPiece(piece, checked) {
@@ -398,15 +421,14 @@ function toggleGraphPiece(piece, checked) {
     if (graphWorkspace.selected.size >= 8 || donors.size > 4) { $("brief-status").textContent = "Selection limit reached: choose up to 8 Pieces from up to 4 donors."; renderPieceOptions(); return; }
     graphWorkspace.selected.set(piece.key, piece);
   } else graphWorkspace.selected.delete(piece.key);
-  renderPieceOptions(); renderSelectionTray(); updateBrief();
+  renderRelationshipDetail(); renderPieceOptions(); renderSelectionTray(); updateBrief();
 }
 
 function renderPieceOptions() {
-  const wrap = clear($("piece-options")); const relationship = graphWorkspace.graph?.relationships.find((item) => item.donorId === graphWorkspace.activeDonorId);
+  const wrap = clear($("piece-options")); const relationship = graphWorkspace.graph?.relationships.find((item) => item.key === graphWorkspace.activeRelationshipKey);
   if (!relationship) { wrap.className = "workspace-empty"; add(wrap, node("p", "Select a donor node or list item to inspect its Contribution Pieces.")); return; }
   wrap.className = "piece-options"; const donor = workspace.indexes.exhibits.get(relationship.donorId);
-  const relationshipKind = relationship.affinityId && relationship.compatibilityEdgeIds?.length ? `${relationship.recipeId ? "Recipe-backed Affinity" : "Directional Affinity"} + static observations` : relationship.recipeId ? "Recipe-backed Affinity" : relationship.affinityId ? "Directional Affinity" : "Static compatibility observations";
-  add(wrap, node("span", relationshipKind, "kicker"), node("h4", `${titleCase(donor.name)} → ${exhibitName(graphWorkspace.hostId)}`), node("p", "Each Piece names its evidence level and unresolved checks. Static matches are integration leads, not verified runtime compatibility.", "control-help"));
+  add(wrap, node("span", "Selectable evidence", "kicker"), node("h4", `${titleCase(donor.name)} Contribution Pieces`), node("p", "Each Piece names its evidence level and unresolved checks. Static matches are integration leads, not verified runtime compatibility.", "control-help"));
   relationship.pieces.forEach((piece) => {
     const label = node("label", undefined, "graph-piece"); const input = node("input"); input.type = "checkbox"; input.dataset.pieceKey = piece.key; input.checked = graphWorkspace.selected.has(piece.key); input.addEventListener("change", () => toggleGraphPiece(piece, input.checked));
     const text = node("span"); add(text, node("strong", piece.label), node("small", `${piece.compatibilityEdgeId ? "Static observation · " : "Cabinet Evidence · "}${piece.path || "Project observation"}${piece.line ? `, line ${piece.line}` : ""}`), node("small", piece.factors.join(" · "))); add(label, input, text); add(wrap, label);
@@ -439,11 +461,11 @@ function wireGraphControls() {
   $("graph-host").addEventListener("change", (event) => { graphWorkspace.hostId = event.target.value; $("graph-search").value = ""; $("intent-note").value = ""; renderAffinityGraph(true); updateBrief(); });
   $("graph-search").addEventListener("input", () => renderAffinityGraph(false));
   $("clear-graph-search").addEventListener("click", () => { $("graph-search").value = ""; renderAffinityGraph(false); $("graph-search").focus(); });
-  $("clear-graph-selection").addEventListener("click", () => { graphWorkspace.selected.clear(); renderPieceOptions(); renderSelectionTray(); updateBrief(); });
+  $("clear-graph-selection").addEventListener("click", () => { graphWorkspace.selected.clear(); renderRelationshipDetail(); renderPieceOptions(); renderSelectionTray(); updateBrief(); });
   $("intent-note").addEventListener("input", updateBrief); $("copy-brief").addEventListener("click", copyBrief);
 }
 
-const capabilityWorkspace = { selectedId: null, mashupIds: new Set(), featureIds: new Set() };
+const capabilityWorkspace = { selectedId: null, activeNodeId: null, mashupIds: new Set(), featureIds: new Set() };
 const MAX_MASHUP_PROJECTS = 4; const MAX_MASHUP_FEATURES = 14;
 
 function capabilityFeatureId(exhibitId, index) { return `${exhibitId}:feature:${index}`; }
@@ -500,7 +522,7 @@ function addProfileSection(parent, heading, items, describe) {
   items.forEach((item) => { const row = node("li"); const value = describe(item); add(row, node("strong", value.label), value.detail ? node("p", value.detail) : null); if ((item.evidence || []).length) { const evidence = node("details"); add(evidence, node("summary", `Source evidence (${item.evidence.length})`)); const paths = node("ul"); item.evidence.forEach((entry) => add(paths, node("li", entry))); add(evidence, paths); add(row, evidence); } add(list, row); }); add(parent, list);
 }
 
-function renderProfileSvg(graph, svgId, titleId, descId, title, description, onFeatureToggle = null) {
+function renderProfileSvg(graph, svgId, titleId, descId, title, description, options = {}) {
   const svg = clear($(svgId)); add(svg, svgNode("title", { id: titleId }, title), svgNode("desc", { id: descId }, description));
   if (!graph.nodes.length) return;
   const locations = new Map(); const projects = graph.nodes.filter((item) => item.kind === "project"); const others = graph.nodes.filter((item) => item.kind !== "project");
@@ -509,12 +531,45 @@ function renderProfileSvg(graph, svgId, titleId, descId, title, description, onF
   others.forEach((item, index) => locations.set(item.id, { x: 75 + (index % 6) * 150, y: 220 + Math.floor(index / 6) * 125 }));
   graph.edges.forEach((edge) => { const from = locations.get(edge.from); const to = locations.get(edge.to); if (from && to) add(svg, svgNode("line", { x1: from.x, y1: from.y, x2: to.x, y2: to.y, class: `capability-edge edge-${edge.relationship}` })); });
   graph.nodes.forEach((item) => {
-    const point = locations.get(item.id); const interactive = item.kind === "feature" && onFeatureToggle; const attributes = { class: `capability-node node-${item.kind}${interactive ? " interactive" : ""}`, role: interactive ? "button" : "img", "aria-label": `${item.kind}: ${item.label}${interactive ? "; activate to deselect" : ""}` };
-    if (interactive) { attributes.tabindex = "0"; attributes["aria-pressed"] = "true"; }
+    const point = locations.get(item.id); const interactive = Boolean(options.onActivate) && (!options.interactiveKinds || options.interactiveKinds.has(item.kind)); const active = options.activeNodeId === item.id; const attributes = { class: `capability-node node-${item.kind}${interactive ? " interactive" : ""}${active ? " active" : ""}`, role: interactive ? "button" : "img", "aria-label": `${item.kind}: ${item.label}${interactive ? `; ${options.actionLabel || "activate to inspect details"}` : ""}`, "data-node-id": item.id };
+    if (interactive) { attributes.tabindex = "0"; if (options.pressed) attributes["aria-pressed"] = "true"; if (active) attributes["aria-current"] = "true"; if (options.controlsId === "capability-node-detail") Object.assign(attributes, { "aria-controls": "capability-node-detail" }); }
     const group = svgNode("g", attributes); add(group, svgNode("title", {}, `${item.label}${item.detail ? ` — ${item.detail}` : ""}`), svgNode("circle", { cx: point.x, cy: point.y, r: item.kind === "project" ? 42 : 31 }), svgNode("text", { x: point.x, y: point.y + 4, "text-anchor": "middle" }, item.label.slice(0, item.kind === "project" ? 18 : 12)));
-    if (interactive) { const activate = () => onFeatureToggle(item.id); group.addEventListener("click", activate); group.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); activate(); } }); }
+    if (interactive) { const activate = () => options.onActivate(item.id); group.addEventListener("click", activate); group.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); activate(); } }); }
     add(svg, group);
   });
+}
+
+function capabilityNodeRecord(profile, graph, graphNode) {
+  const prefix = `${profile.exhibit_id}:${graphNode.kind}:`; const index = graphNode.id.startsWith(prefix) ? Number(graphNode.id.slice(prefix.length)) : -1;
+  if (graphNode.kind === "feature") return profile.feature_descriptions[index] || null;
+  if (graphNode.kind === "capability") return profile.provides[index] || null;
+  if (graphNode.kind === "role") return profile.mashup_roles[index] || null;
+  if (graphNode.kind === "project" && graphNode.id === profile.exhibit_id) return null;
+  if (graphNode.kind === "complement" || graphNode.kind === "project") {
+    const roleEdge = graph.edges.find((edge) => edge.to === graphNode.id && edge.relationship === "complements"); const rolePrefix = `${profile.exhibit_id}:role:`; const roleIndex = roleEdge?.from.startsWith(rolePrefix) ? Number(roleEdge.from.slice(rolePrefix.length)) : -1; return profile.mashup_roles[roleIndex] || null;
+  }
+  return null;
+}
+
+function renderCapabilityNodeDetail(profile, graph) {
+  const wrap = clear($("capability-node-detail")); const graphNode = graph.nodes.find((item) => item.id === capabilityWorkspace.activeNodeId);
+  if (!graphNode) { wrap.className = "graph-click-detail workspace-empty"; const heading = node("h4", "Click a declared node"); heading.id = "capability-node-detail-heading"; add(wrap, heading, node("p", "Use a graph node or the complete profile to inspect its description, declaration type, and source evidence where attached. Spatial proximity is layout only.")); return; }
+  wrap.className = "graph-click-detail"; const labels = { feature: "Declared feature", capability: "Declared capability", input: "Declared input", output: "Declared output", role: "Declared Mashup Role", complement: "Source-declared complement" }; const kindLabel = graphNode.kind === "project" ? (graphNode.id === profile.exhibit_id ? "Exhibit profile" : "Source-declared complement reference") : (labels[graphNode.kind] || titleCase(graphNode.kind)); const record = capabilityNodeRecord(profile, graph, graphNode); const heading = node("h4", graphNode.label); heading.id = "capability-node-detail-heading";
+  add(wrap, node("span", kindLabel, "kicker"), heading, node("p", graphNode.detail || "This declaration has no additional description in the bounded profile."));
+  const neighbors = graph.edges.filter((edge) => edge.from === graphNode.id || edge.to === graphNode.id).map((edge) => { const otherId = edge.from === graphNode.id ? edge.to : edge.from; const other = graph.nodes.find((item) => item.id === otherId); return `${edge.from === graphNode.id ? "Connects to" : "Declared by"} ${other?.label || otherId} · ${titleCase(edge.relationship)}`; });
+  if (neighbors.length) { add(wrap, node("h5", "Graph relationships")); const list = node("ul", undefined, "node-relationships"); neighbors.forEach((item) => add(list, node("li", item))); add(wrap, list); }
+  if ((record?.evidence || []).length) { const evidence = node("details"); add(evidence, node("summary", `Source evidence (${record.evidence.length})`)); const paths = node("ul"); record.evidence.forEach((path) => add(paths, node("li", path))); add(evidence, paths); add(wrap, evidence); }
+  add(wrap, node("p", "This node repeats a bounded source declaration. Its position and connecting line do not prove transferability or runtime compatibility.", "connection-limitation"));
+}
+
+function renderSelectedCapabilityGraph(profile) {
+  const graph = CabinetCupboard.capabilityGraphForProject(workspace.capabilityIndexes, profile.exhibit_id, 18);
+  renderProfileSvg(graph, "capability-graph", "capability-svg-title", "capability-svg-desc", `${profile.display_name} declared relationships`, `${graph.nodes.length} source-declared nodes. ${graph.truncated ? "The visual is bounded; the profile detail is complete." : "The visual contains all declared nodes."}`, { onActivate: inspectCapabilityNode, activeNodeId: capabilityWorkspace.activeNodeId, controlsId: "capability-node-detail", actionLabel: "activate to inspect details" });
+  renderCapabilityNodeDetail(profile, graph); return graph;
+}
+
+function inspectCapabilityNode(nodeId) {
+  const profile = workspace.capabilityIndexes?.byExhibitId.get(capabilityWorkspace.selectedId); if (!profile) return; capabilityWorkspace.activeNodeId = nodeId; const graph = renderSelectedCapabilityGraph(profile); const graphNode = graph.nodes.find((item) => item.id === nodeId); $("capability-node-status").textContent = `${graphNode?.label || "Declared"} ${graphNode?.kind || "node"} selected in ${profile.display_name}. Details updated below the graph.`; document.querySelector(`#capability-graph [data-node-id="${CSS.escape(nodeId)}"]`)?.focus();
 }
 
 function renderCapabilityList() {
@@ -531,7 +586,7 @@ function renderCapabilityList() {
 }
 
 function selectCapabilityProfile(id, focus = false) {
-  const profile = workspace.capabilityIndexes?.byExhibitId.get(id); if (!profile) return; capabilityWorkspace.selectedId = id; renderCapabilityList();
+  const profile = workspace.capabilityIndexes?.byExhibitId.get(id); if (!profile) return; if (capabilityWorkspace.selectedId !== id) capabilityWorkspace.activeNodeId = null; capabilityWorkspace.selectedId = id; renderCapabilityList();
   const body = clear($("capability-detail-body")); body.className = "capability-profile";
   add(body, node("span", `${profile.project} · ${profile.confidence} confidence`, "kicker"), node("h3", profile.display_name), node("p", profile.description, "profile-description"));
   addProfileSection(body, "Primary users", profile.primary_users, (item) => ({ label: item }));
@@ -540,7 +595,7 @@ function selectCapabilityProfile(id, focus = false) {
   addProfileSection(body, "Accepts", profile.accepts, (item) => ({ label: capabilityValue(item) })); addProfileSection(body, "Produces", profile.produces, (item) => ({ label: capabilityValue(item) }));
   addProfileSection(body, "Mashup roles", profile.mashup_roles, (item) => ({ label: item.role, detail: `${item.why}${item.complements.length ? ` Declared complements: ${item.complements.join(", ")}.` : ""}` }));
   add(body, node("h4", "Ecosystem and maturity"), node("p", `${typeof profile.ecosystem === "object" ? JSON.stringify(profile.ecosystem) : profile.ecosystem} · ${Array.isArray(profile.maturity_signals) ? profile.maturity_signals.join(" · ") : typeof profile.maturity_signals === "object" ? JSON.stringify(profile.maturity_signals) : profile.maturity_signals}`), node("h4", "Inspected paths")); const paths = node("ul", undefined, "inspected-paths"); profile.inspected_paths.forEach((path) => add(paths, node("li", path))); add(body, paths);
-  const graph = CabinetCupboard.capabilityGraphForProject(workspace.capabilityIndexes, id, 18); renderProfileSvg(graph, "capability-graph", "capability-svg-title", "capability-svg-desc", `${profile.display_name} declared relationships`, `${graph.nodes.length} source-declared nodes. ${graph.truncated ? "The visual is bounded; the profile detail is complete." : "The visual contains all declared nodes."}`);
+  renderSelectedCapabilityGraph(profile);
   const alreadySelected = capabilityWorkspace.mashupIds.has(id); const atLimit = capabilityWorkspace.mashupIds.size >= MAX_MASHUP_PROJECTS; $("add-capability-mashup").disabled = alreadySelected || atLimit; $("add-capability-mashup").textContent = alreadySelected ? "Profile is in Interactive Mashup" : atLimit ? "Interactive Mashup project limit reached" : "Add profile to Interactive Mashup"; if (focus) $("capability-detail-heading").focus();
 }
 
@@ -564,7 +619,7 @@ function renderMashup() {
   });
   $("clear-mashup").disabled = !ids.length; const graph = CabinetCupboard.conceptualMashupGraph(workspace.capabilityIndexes, ids, 18, capabilityWorkspace.featureIds);
   const toggleFromGraph = (featureId) => { capabilityWorkspace.featureIds.delete(featureId); renderMashup(); announceMashup("Feature deselected from the graph. Use its checkbox to restore it."); const control = document.querySelector(`[data-feature-id="${CSS.escape(featureId)}"]`); if (control) control.focus(); };
-  renderProfileSvg(graph, "mashup-graph", "mashup-svg-title", "mashup-svg-desc", `Interactive Mashup of ${ids.length} projects`, `${ids.length} selected projects, ${graph.featureIds.length} selected features, and ${graph.connections.length} of ${graph.connectionCount} declaration leads shown. No runtime compatibility is inferred.`, toggleFromGraph);
+  renderProfileSvg(graph, "mashup-graph", "mashup-svg-title", "mashup-svg-desc", `Interactive Mashup of ${ids.length} projects`, `${ids.length} selected projects, ${graph.featureIds.length} selected features, and ${graph.connections.length} of ${graph.connectionCount} declaration leads shown. No runtime compatibility is inferred.`, { onActivate: toggleFromGraph, interactiveKinds: new Set(["feature"]), actionLabel: "activate to deselect", pressed: true });
   const connectionList = clear($("mashup-connection-list"));
   if (ids.length < 2) add(connectionList, node("p", "Choose at least two projects to compare their declarations.", "empty compact")); else if (!graph.connections.length) add(connectionList, node("p", "No uniquely resolved complement or exact declared output-to-input wording match was found. This is not evidence that these projects cannot work together.", "empty compact"));
   if (graph.connectionsTruncated) add(connectionList, node("p", `Showing the first ${graph.connections.length} of ${graph.connectionCount} deterministic declaration leads; ${graph.omittedConnectionCount} are omitted from this bounded view. Refine the selected projects to inspect a different set.`, "notice compact"));
@@ -583,7 +638,7 @@ function wireCapabilityControls() {
 }
 
 function rejectCapabilityMap(reason = "") {
-  workspace.capabilityMap = null; workspace.capabilityIndexes = null; capabilityWorkspace.selectedId = null; capabilityWorkspace.mashupIds.clear(); capabilityWorkspace.featureIds.clear();
+  workspace.capabilityMap = null; workspace.capabilityIndexes = null; capabilityWorkspace.selectedId = null; capabilityWorkspace.activeNodeId = null; capabilityWorkspace.mashupIds.clear(); capabilityWorkspace.featureIds.clear();
   $("capability-search").value = ""; $("capability-search").disabled = true; $("capability-workbench").classList.add("hidden");
   if (reason) console.warn(`Capability Map rejected: ${reason}`);
 }
