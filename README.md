@@ -20,18 +20,18 @@ Or scan and serve an in-memory snapshot:
 python3 cabinet.py serve ~/projects --port 8765
 ```
 
-### Historical autonomous-build collection
+### Autonomous build-cycle GitHub collection
 
-The deployed Cabinet uses only the first Hermes Autonomous Project Builder cohort from June 27–29, 2026. Its explicit 23-project allowlist lives in `datasets/first-autonomous-cohort.txt`.
+The deployed Cabinet uses the strict one-commit subset of GitHub repositories created by the previous Hermes autonomous build cycle. Its explicit 320-repository provenance manifest lives in `datasets/autonomous-github-one-commit.csv`.
 
 ```bash
 python3 scripts/build_historical_snapshot.py --output /tmp/cabinet-historical.json
 python3 cabinet.py serve-snapshot /tmp/cabinet-historical.json --port 18791
 ```
 
-Later July iterations, ordinary projects under `~/projects`, Hermes state, and run logs are deliberately absent from this collection.
+Each row must resolve to a direct child of `~/builds`, contain a `.built` marker, have exactly one local commit, and have an `origin` matching the recorded `github.com/mojomast/...` repository. Two-commit autonomous repositories, local-only builds, unrelated `*ussy` repositories, ordinary projects under `~/projects`, Hermes state, and run logs are deliberately absent.
 
-A supplied directory with a recognizable project marker is an Exhibit. Otherwise the scanner discovers marked project directories up to depth 3; if none exist, the supplied directory itself becomes an Exhibit. At most 200 Exhibits are retained.
+A supplied directory with a recognizable project marker is an Exhibit. Otherwise the scanner discovers marked project directories up to depth 3; if none exist, the supplied directory itself becomes an Exhibit. At most 500 Exhibits are retained.
 
 Optional local git status is explicit:
 

@@ -93,10 +93,17 @@ function plaque(exhibit) {
   const card = node("article", undefined, "plaque");
   add(
     card,
-    node("span", "Historical autonomous build", "kicker"),
+    node("span", "One-commit autonomous GitHub repository", "kicker"),
     node("h3", titleCase(exhibit.name)),
-    node("div", `Project folder: ${projectFolder(exhibit)}`, "path"),
+    node("div", `Local project: ${projectFolder(exhibit)}`, "path"),
   );
+  if (exhibit.repository?.url) {
+    const link = node("a", `github.com/${exhibit.repository.owner}/${exhibit.repository.name}`, "repository-link");
+    link.href = exhibit.repository.url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    add(card, link, node("div", "Exactly 1 commit", "path"));
+  }
 
   const scores = node("div", undefined, "scores");
   add(
@@ -157,7 +164,7 @@ function renderRecipe(recipe, names, index) {
 }
 
 function render(data) {
-  $("summary").textContent = `${data.exhibits.length} projects from the first autonomous-build cohort · ${data.resurrection_recipes.length} resurrection ideas`;
+  $("summary").textContent = `${data.exhibits.length} one-commit GitHub repositories from the previous autonomous build cycle · ${data.resurrection_recipes.length} resurrection ideas`;
   const grid = $("gallery-grid");
   if (!data.exhibits.length) {
     add(grid, node("p", "No historical autonomous projects were found.", "empty"));
@@ -173,7 +180,7 @@ function render(data) {
   data.resurrection_recipes.forEach((recipe, index) => add(recipes, renderRecipe(recipe, names, index)));
 
   $("limits").textContent = JSON.stringify(data.limits, null, 2);
-  $("fingerprint").textContent = "Dataset: first autonomous cohort · June 27–29, 2026";
+  $("fingerprint").textContent = `Dataset: ${data.collection?.project_count || data.exhibits.length} mojomast GitHub repositories · exactly one commit each`;
 }
 
 document.querySelectorAll(".tab").forEach((tab) => tab.addEventListener("click", () => {

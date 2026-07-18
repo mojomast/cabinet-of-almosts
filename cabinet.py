@@ -20,7 +20,7 @@ from urllib.parse import urlsplit
 VERSION = "0.2.0"
 LIMITS = {
     "max_depth": 3,
-    "max_exhibits": 200,
+    "max_exhibits": 500,
     "max_files_per_exhibit": 4000,
     "max_file_bytes": 512 * 1024,
     "max_exhibit_bytes": 16 * 1024 * 1024,

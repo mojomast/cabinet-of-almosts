@@ -182,7 +182,7 @@ class CabinetFixture(unittest.TestCase):
 
     def test_ui_uses_human_labels_instead_of_opaque_ids(self):
         app = (Path(cabinet.__file__).with_name("static") / "app.js").read_text(encoding="utf-8")
-        self.assertIn("Historical autonomous build", app)
+        self.assertIn("One-commit autonomous GitHub repository", app)
         self.assertIn("How much unfinished work was found", app)
         for opaque in ("Exhibit ·", "affinity_id", "evidence_ids.join", "evidence.id"):
             self.assertNotIn(opaque, app)
