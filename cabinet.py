@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, Iterable
 from urllib.parse import urlsplit
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 LIMITS = {
     "max_depth": 3,
     "max_exhibits": 500,
@@ -55,7 +55,13 @@ PROJECT_MARKERS = {
     "pyproject.toml", "setup.py", "package.json", "Cargo.toml", "go.mod", "Gemfile",
     "pom.xml", "build.gradle", "Makefile", "README", "README.md", "README.rst",
 }
-TODO_RE = re.compile(r"\b(TODO|FIXME|HACK|XXX|WIP|NOT IMPLEMENTED|pass\s*(?:#.*)?$|NotImplementedError)\b", re.I)
+# Require an explicit comment marker for TODO-like words. Bare `pass`, enum
+# values such as PASS, prose saying "tests pass", and ordinary uses of the
+# noun "todo" are not reliable completion evidence.
+TODO_RE = re.compile(
+    r"(?:(?:#|//|/\*|\*|<!--|--)\s*(?:TODO|FIXME|HACK|XXX|WIP)\b|\bNotImplementedError\b|\bnot\s+implemented\b)",
+    re.I,
+)
 DECL_RE = re.compile(r"^\s*(?:def|class|function|export\s+(?:default\s+)?(?:function|class|const)|(?:pub\s+)?fn|interface|type|module|func)\s+([A-Za-z_$][\w$]*)")
 SECRET_CONTENT_RE = re.compile(
     r"(?:-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|^\s*(?:api[_-]?key|secret[_-]?key|access[_-]?token|password)\s*[:=]\s*[^\s${<][^\n]{5,})",
@@ -66,7 +72,7 @@ LANG_BY_EXT = {
     ".ts": "typescript", ".tsx": "typescript", ".jsx": "javascript", ".rs": "rust",
     ".go": "go", ".rb": "ruby", ".java": "java", ".kt": "kotlin", ".c": "c",
     ".h": "c", ".cpp": "cpp", ".hpp": "cpp", ".sh": "shell", ".html": "html",
-    ".css": "css", ".sql": "sql", ".md": "markdown",
+    ".css": "css", ".sql": "sql", ".md": "markdown", ".zig": "zig", ".nim": "nim",
 }
 
 
@@ -82,7 +88,7 @@ def canonical_bytes(value: Any) -> bytes:
 def excluded_name(name: str, is_dir: bool = False) -> bool:
     low = name.lower()
     if is_dir:
-        return name in EXCLUDED_DIRS or low in {x.lower() for x in EXCLUDED_DIRS}
+        return name in EXCLUDED_DIRS or low in {x.lower() for x in EXCLUDED_DIRS} or low.endswith(".egg-info")
     if low in SECRET_NAMES or low.startswith(".env.") or SECRET_PARTS.search(low):
         return True
     suffix = Path(low).suffix
@@ -236,6 +242,10 @@ def is_test_path(path: str) -> bool:
     return bool(re.search(r"(^|/)(tests?|spec)(/|_)|(?:_test|\.spec|\.test)\.", path, re.I))
 
 
+def is_fixture_path(path: str) -> bool:
+    return bool(re.search(r"(^|/)(fixtures?|examples?|samples?)(/|$)", path, re.I))
+
+
 def inspect_exhibit(root: Path, display_path: str, include_git: bool) -> dict[str, Any]:
     exhibit_id = "ex-" + sha(display_path)
     evs: list[dict[str, Any]] = []
@@ -269,16 +279,17 @@ def inspect_exhibit(root: Path, display_path: str, include_git: bool) -> dict[st
         files.append({"path": rel, "bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest(), "language": language})
         file_evidence = 0
         test_path = is_test_path(rel)
+        fixture_path = is_fixture_path(rel)
         for number, line in enumerate(text.splitlines(), 1):
             clean = line.strip()
-            if TODO_RE.search(line):
+            if not test_path and not fixture_path and TODO_RE.search(line):
                 if file_evidence < LIMITS["max_evidence_per_file"] and len(evs) < LIMITS["max_evidence_per_exhibit"] - 4:
                     ev = evidence(exhibit_id, "unfinished-marker", rel, number, clean)
                     evs.append(ev); todo_ids.append(ev["id"]); file_evidence += 1
                 else:
                     evidence_omitted += 1; truncated = True; truncation_reasons.add("evidence")
             match = DECL_RE.match(line)
-            if match and not test_path:
+            if match and not test_path and not fixture_path:
                 if (len(fragments) < LIMITS["max_fragments_per_exhibit"] and
                         file_evidence < LIMITS["max_evidence_per_file"] and
                         len(evs) < LIMITS["max_evidence_per_exhibit"] - 4):
@@ -609,6 +620,7 @@ class CabinetHandler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         routes = {"/": ("index.html", "text/html; charset=utf-8"),
                   "/app.js": ("app.js", "text/javascript; charset=utf-8"),
+                  "/cupboard.js": ("cupboard.js", "text/javascript; charset=utf-8"),
                   "/style.css": ("style.css", "text/css; charset=utf-8")}
         if path == "/cabinet.json":
             self._send(200, self.snapshot, "application/json; charset=utf-8", head); return

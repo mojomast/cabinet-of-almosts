@@ -9,36 +9,105 @@
 </head>
 <body>
   <header>
-    <div class="eyebrow">320 one-commit GitHub repositories · previous autonomous build cycle</div>
+    <div class="eyebrow">One-commit GitHub repositories · previous autonomous build cycle</div>
     <h1>The Cabinet <i>of</i> Almosts</h1>
-    <p class="lede">A human-readable museum of the GitHub repositories Hermes built in the previous autonomous cycle—and the pieces that might help them live again.</p>
-    <nav aria-label="Views">
-      <button class="tab active" data-view="gallery" aria-selected="true">Gallery</button>
-      <button class="tab" data-view="workbench" aria-selected="false">Workbench</button>
-      <button class="tab" data-view="method" aria-selected="false">Method</button>
+    <p class="lede">A human-readable museum of what Hermes built—and a steerable cupboard for discovering which bounded pieces might help other projects.</p>
+    <nav aria-label="Cabinet views" role="tablist">
+      <button id="tab-gallery" class="tab active" data-view="gallery" role="tab" aria-controls="gallery" aria-selected="true">Gallery</button>
+      <button id="tab-cupboard" class="tab" data-view="cupboard" role="tab" aria-controls="cupboard" aria-selected="false" tabindex="-1">Cupboard</button>
+      <button id="tab-method" class="tab" data-view="method" role="tab" aria-controls="method" aria-selected="false" tabindex="-1">Method</button>
     </nav>
   </header>
   <main>
-    <section id="gallery" class="view">
+    <section id="gallery" class="view" role="tabpanel" aria-labelledby="tab-gallery">
       <div class="section-head"><div><span class="kicker">Historical autonomous projects only</span><h2>Gallery</h2></div><p id="summary">Opening drawers…</p></div>
       <div id="gallery-grid" class="grid" aria-live="polite"></div>
     </section>
-    <section id="workbench" class="view hidden">
-      <div class="section-head"><div><span class="kicker">Directional recombination</span><h2>Workbench</h2></div><p>Bounded suggestions, never automatic changes.</p></div>
-      <div id="recipes" class="recipes"></div>
+
+    <section id="cupboard" class="view hidden" role="tabpanel" aria-labelledby="tab-cupboard">
+      <div class="section-head cupboard-head"><div><span class="kicker">Steerable recombination</span><h2>Cupboard</h2></div><p>Arrange evidence-backed pieces. Nothing is copied, run, or written to a project.</p></div>
+      <div id="cupboard-status" class="sr-only" aria-live="polite"></div>
+      <div class="cupboard-layout">
+        <aside class="steering-panel" aria-labelledby="steer-heading">
+          <div class="pane-heading"><span>01</span><h3 id="steer-heading">Choose and steer</h3></div>
+          <label for="host-search">Host project</label>
+          <input id="host-search" type="search" placeholder="Filter projects…" autocomplete="off">
+          <label class="inline-check"><input id="show-all-hosts" type="checkbox"> Show projects without detected needs</label>
+          <div id="host-options" class="choice-list host-list"></div>
+
+          <fieldset id="goal-fieldset" disabled>
+            <legend>What should change?</legend>
+            <p class="control-help">Detected goals are evidence-backed. Added directions are clearly marked as yours.</p>
+            <div id="goal-options"></div>
+          </fieldset>
+
+          <label for="focus-terms">Focus terms <span class="optional">optional, comma-separated</span></label>
+          <input id="focus-terms" type="text" placeholder="parser, export, validation" disabled>
+
+          <fieldset id="donor-fieldset" disabled>
+            <legend>Donor scope</legend>
+            <label class="inline-check"><input id="selected-only" type="checkbox"> Use only projects I prefer</label>
+            <label for="donor-search">Find donors</label>
+            <input id="donor-search" type="search" placeholder="Filter compatible donors…" autocomplete="off">
+            <div id="donor-options" class="choice-list donor-list"></div>
+            <p class="control-help">Each donor cycles through Available → Prefer → Exclude.</p>
+          </fieldset>
+
+          <fieldset id="dial-fieldset" disabled>
+            <legend>Arrangement controls</legend>
+            <div class="dial"><label for="breadth">Breadth</label><output id="breadth-output" for="breadth">2 donors · up to 4 pieces</output><input id="breadth" type="range" min="1" max="4" value="2"><div class="ticks"><span>Focused</span><span>Wide</span></div></div>
+            <div class="dial"><label for="novelty">Novelty</label><output id="novelty-output" for="novelty">Balanced</output><input id="novelty" type="range" min="0" max="2" value="1"><div class="ticks"><span>Familiar</span><span>Surprising</span></div></div>
+            <div class="dial"><label for="compatibility">Compatibility</label><output id="compatibility-output" for="compatibility">Balanced</output><input id="compatibility" type="range" min="0" max="2" value="1"><div class="ticks"><span>Strict</span><span>Exploratory</span></div></div>
+            <div class="dial"><label for="risk">Risk tolerance</label><output id="risk-output" for="risk">Considered</output><input id="risk" type="range" min="0" max="2" value="1"><div class="ticks"><span>Cautious</span><span>Speculative</span></div></div>
+          </fieldset>
+          <button id="arrange" class="primary" disabled>Arrange pieces</button>
+          <button id="start-over" class="quiet" disabled>Start over</button>
+        </aside>
+
+        <section class="arrangement-panel" aria-labelledby="arrangement-heading">
+          <div class="pane-heading"><span>02</span><h3 id="arrangement-heading" tabindex="-1">Current arrangement</h3></div>
+          <div id="stale-notice" class="notice hidden">Settings changed; the current arrangement is preserved. <button id="rearrange">Rearrange with these settings</button></div>
+          <div id="arrangement-empty" class="workspace-empty"><h4>Choose the project you want to advance.</h4><p>The Cupboard will use only bounded observations already present in this snapshot.</p></div>
+          <div id="variant-workspace" class="hidden">
+            <div class="variant-toolbar">
+              <button id="previous-variant" aria-label="Previous arrangement">←</button>
+              <strong id="variant-label">Variant 1</strong>
+              <button id="next-variant" aria-label="Next arrangement">→</button>
+              <button id="try-another">Try another arrangement</button>
+              <button id="add-compare">Add to compare</button>
+            </div>
+            <div id="variant-summary" class="variant-summary"></div>
+            <div id="piece-list" class="piece-list"></div>
+            <h4>Fit map</h4>
+            <div id="fit-map" class="fit-map"></div>
+          </div>
+        </section>
+
+        <aside class="evidence-panel" aria-labelledby="evidence-heading">
+          <div class="pane-heading"><span>03</span><h3 id="evidence-heading">Why these pieces fit</h3></div>
+          <div id="evidence-chain" class="workspace-empty"><p>Select a proposed piece to inspect its host observation, matching rule, donor evidence, intended use, and cautions.</p></div>
+        </aside>
+      </div>
+
+      <section id="comparison" class="comparison hidden" aria-labelledby="comparison-heading">
+        <div class="section-head"><div><span class="kicker">Up to three arrangements</span><h3 id="comparison-heading">Compare variants</h3></div><button id="clear-comparison" class="quiet">Clear comparison</button></div>
+        <div class="table-scroll"><table><caption>Differences between saved arrangements</caption><thead id="comparison-head"></thead><tbody id="comparison-body"></tbody></table></div>
+      </section>
     </section>
-    <section id="method" class="view hidden">
+
+    <section id="method" class="view hidden" role="tabpanel" aria-labelledby="tab-method">
       <div class="section-head"><div><span class="kicker">A legible instrument</span><h2>Method</h2></div></div>
       <div class="method-grid">
-        <article><b>01</b><h3>Look, never run</h3><p>The scanner reads bounded text files. It does not import, build, install, evaluate, or execute project code.</p></article>
-        <article><b>02</b><h3>Explain every score</h3><p>Scores are shown in plain English. They describe unfinished signals and reusable structure; they are not judgments of project quality.</p></article>
-        <article><b>03</b><h3>Suggest lightly</h3><p>The Workbench connects compatible evidence between historical projects. Every resurrection idea remains small, reviewable, and non-executing.</p></article>
-        <article><b>04</b><h3>Stay local</h3><p>The read-only server binds to loopback. Assets are bundled here; no remote requests, trackers, or write endpoints exist.</p></article>
+        <article><b>01</b><h3>Observe, never run</h3><p>The scanner reads bounded text files. It does not import, build, install, evaluate, or execute project code.</p></article>
+        <article><b>02</b><h3>Arrange atomic evidence</h3><p>A Cupboard piece is a donor observation connected to one host direction. Multi-project arrangements preserve every path, line, rule, and caution.</p></article>
+        <article><b>03</b><h3>Steer explicitly</h3><p>Breadth, novelty, compatibility, risk, focus, donor preferences, locks, and exclusions change deterministic ranking. They never invent evidence.</p></article>
+        <article><b>04</b><h3>Keep claims bounded</h3><p>“Fits” means the displayed snapshot signals align. It never claims buildability, API equivalence, license compatibility, or correctness.</p></article>
       </div>
       <details><summary>Snapshot limits</summary><pre id="limits"></pre></details>
     </section>
   </main>
   <footer><span>Cabinet of Almosts</span><span id="fingerprint">Canonical local snapshot</span></footer>
+  <script src="/cupboard.js" defer></script>
   <script src="/app.js" defer></script>
 </body>
 </html>

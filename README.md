@@ -2,7 +2,9 @@
 
 A local, read-only instrument for finding unfinished projects and evidence-supported ways their reusable pieces might help one another.
 
-The Cabinet is intentionally **not** an AI wrapper, code runner, build tool, or autonomous merger. It deterministically scans only roots you name, records bounded evidence, identifies shallow fragments, and derives directional affinities and small Resurrection Recipes. The result is a canonical JSON snapshot and a static Gallery/Workbench/Method interface.
+The Cabinet is intentionally **not** an AI wrapper, code runner, build tool, or autonomous merger. It deterministically scans only roots you name, records bounded evidence, identifies shallow fragments, and derives directional affinities. The result is a canonical JSON snapshot and a static Gallery/Cupboard/Method interface.
+
+The **Cupboard** is an in-browser recombination instrument. Choose a host, select detected or user-directed goals, prefer or exclude donors, steer breadth/novelty/compatibility/risk, then arrange multiple evidence-backed pieces. You can lock pieces, replace one piece, iterate deterministic alternatives, compare up to three variants, and inspect the exact host observation → matching rule → donor evidence chain. Workspace state lives only in the page; no project or server state is written.
 
 ## Quick start
 
@@ -63,7 +65,10 @@ This is defense in depth, not a secret-detection guarantee. Review roots before 
 - **Almost / Need**: unfinishedness that could be advanced.
 - **Fragment / Provision**: a shallow named declaration or capability.
 - **Affinity**: a directional evidence match from a donor to a host.
-- **Resurrection Recipe**: a bounded, human-reviewed adaptation suggestion.
+- **Contribution Piece**: one donor observation connected to one selected host direction.
+- **Arrangement**: a bounded, deterministic set of Contribution Pieces from one or more donors.
+- **Steering**: explicit browser-local goals, focus terms, donor choices, bounds, locks, and risk/compatibility policies.
+- **Resurrection Recipe**: the legacy pairwise adaptation suggestion retained in the v1 snapshot.
 - **Plaque**: Gallery rendering of an Exhibit.
 - **Source Fingerprint**: SHA-256 of sorted observed paths and content hashes.
 
@@ -75,7 +80,7 @@ See [SPEC.md](SPEC.md) for schema, scoring, exclusions, and limits.
 python3 -m unittest discover -s tests -v
 ```
 
-Synthetic tests cover deterministic output and path privacy, secret and binary exclusion, symlink containment, excluded directories, bounded evidence, evidence-linked scores, negative affinity controls, recipe provenance and bounds, schema validation, arbitrary-byte filenames, output-path safety, and HTTP 405 behavior.
+Synthetic tests cover deterministic output and path privacy, secret and binary exclusion, symlink containment, excluded directories, bounded evidence, evidence-linked scores, negative affinity controls, recipe provenance and bounds, contextual unfinished-marker filtering, Zig/Nim recognition, deterministic multi-element arrangements, schema validation, arbitrary-byte filenames, output-path safety, and HTTP 405 behavior.
 
 ## Benchmark
 

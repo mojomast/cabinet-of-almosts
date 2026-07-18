@@ -5,6 +5,7 @@ import threading
 import unittest
 import urllib.error
 import urllib.request
+import subprocess
 from pathlib import Path
 
 import cabinet
@@ -145,6 +146,26 @@ class CabinetFixture(unittest.TestCase):
             for item in snapshot["affinities"]
         ))
 
+    def test_pass_prose_tests_and_fixtures_do_not_become_completion_needs(self):
+        project = self.project("not-an-almost", {
+            "README.md": "# Finished\nAll tests pass. Keep a todo list.\n",
+            "main.py": "def tolerate():\n    try:\n        int('x')\n    except ValueError:\n        pass\n",
+            "tests/test_status.py": "def test_status():\n    # TODO improve fixture later\n    assert 'PASS'\n",
+            "fixtures/example.py": "# TODO intentionally unfinished sample\ndef sample(): pass\n",
+        })
+        exhibit = cabinet.scan([str(project)])["exhibits"][0]
+        self.assertFalse(any(item["kind"] == "unfinished-marker" for item in exhibit["evidence"]))
+        self.assertFalse(any(item["kind"] == "completion" for item in exhibit["needs"]))
+
+    def test_zig_and_nim_are_recognized_as_code_languages(self):
+        project = self.project("more-languages", {
+            "README.md": "# Languages\n",
+            "main.zig": "pub fn widget() void {}\n",
+            "helper.nim": "proc helper() = discard\n",
+        })
+        exhibit = cabinet.scan([str(project)])["exhibits"][0]
+        self.assertEqual(set(exhibit["languages"]), {"nim", "zig", "markdown"})
+
     def test_documentation_only_exhibit_gets_no_source_points(self):
         project = self.project("notes", {"README.md": "# Notes\nA finished narrative.\n"})
         exhibit = cabinet.scan([str(project)])["exhibits"][0]
@@ -187,6 +208,34 @@ class CabinetFixture(unittest.TestCase):
         for opaque in ("Exhibit ·", "affinity_id", "evidence_ids.join", "evidence.id"):
             self.assertNotIn(opaque, app)
 
+    def test_cupboard_engine_builds_deterministic_multi_element_variants(self):
+        static = Path(cabinet.__file__).with_name("static")
+        script = r'''
+const engine = require(process.argv[1]);
+const data = require(process.argv[2]);
+const indexes = engine.buildIndexes(data);
+const host = data.exhibits.find(item => item.needs.length && (indexes.affinitiesByHost.get(item.id) || []).length);
+if (!host) throw new Error("fixture snapshot has no host with affinities");
+const config = {hostId: host.id, goals: engine.detectedGoals(host), focusTerms: [], preferredDonors: [], excludedDonors: [], onlyDonors: [], breadth: 3, novelty: 1, compatibility: 1, riskTolerance: 2};
+const candidates = engine.buildCandidates(data, indexes, config);
+const first = engine.assembleVariant(candidates, config, [], 0);
+const again = engine.assembleVariant(candidates, config, [], 0);
+if (!candidates.length || !first.pieces.length) throw new Error("no candidates or pieces");
+if (JSON.stringify(first) !== JSON.stringify(again)) throw new Error("variant is not deterministic");
+if (new Set(first.donorIds).size !== first.donorIds.length) throw new Error("duplicate donors");
+if (first.donorIds.length > config.breadth) throw new Error("breadth bound exceeded");
+if (!first.pieces.every(piece => piece.factors.length && piece.cautions.length && piece.action)) throw new Error("piece is not explainable");
+'''
+        snapshot = cabinet.scan([
+            str(self.project("host-cupboard", {"README.md": "# Host\n", "host.py": "# TODO implement widget parser\n"})),
+            str(self.project("donor-cupboard", {"README.md": "# Donor\n", "widget.py": "def widget_parser(): return 1\n", "tests/test_widget.py": "def test_widget(): assert True\n"})),
+        ])
+        with tempfile.NamedTemporaryFile("w", suffix=".json", encoding="utf-8") as handle:
+            json.dump(snapshot, handle)
+            handle.flush()
+            result = subprocess.run(["node", "-e", script, str(static / "cupboard.js"), handle.name], capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_http_is_loopback_read_only_and_returns_405(self):
         payload = cabinet.canonical_bytes({"schema": "test", "exhibits": []})
         server = cabinet.make_server(payload, 0)
@@ -197,6 +246,8 @@ class CabinetFixture(unittest.TestCase):
             with urllib.request.urlopen(base + "/cabinet.json") as response:
                 self.assertEqual(response.read(), payload)
                 self.assertEqual(response.status, 200)
+            with urllib.request.urlopen(base + "/cupboard.js") as response:
+                self.assertIn(b"assembleVariant", response.read())
             for method in ["POST", "PUT", "PATCH", "DELETE"]:
                 request = urllib.request.Request(base + "/cabinet.json", data=b"x", method=method)
                 with self.assertRaises(urllib.error.HTTPError) as caught:

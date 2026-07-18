@@ -73,7 +73,7 @@ Recipes are derived in sorted affinity order and include host, donor, rationale,
 | Limit | Value |
 |---|---:|
 | Discovery depth | 3 |
-| Exhibits | 200 |
+| Exhibits | 500 |
 | Files / Exhibit | 4,000 |
 | Bytes / text file | 512 KiB |
 | Bytes / Exhibit | 16 MiB |
@@ -88,10 +88,30 @@ Truncation is reported on an Exhibit when file-count, aggregate-byte, fragment, 
 
 ## 8. HTTP and UI
 
-Fixed routes are `/`, `/app.js`, `/style.css`, and `/cabinet.json`. GET and HEAD are supported. POST, PUT, PATCH, and DELETE return 405. Other paths return 404. Responses disable sniffing and caching and set a local-only restrictive Content Security Policy.
+Fixed routes are `/`, `/app.js`, `/cupboard.js`, `/style.css`, and `/cabinet.json`. GET and HEAD are supported. POST, PUT, PATCH, and DELETE return 405. Other paths return 404. Responses disable sniffing and caching and set a local-only restrictive Content Security Policy.
 
-The bundled UI offers Gallery, Workbench, and Method views. It has no remote assets. Dynamic values are rendered with DOM element creation and `textContent`, never `innerHTML`.
+The bundled UI offers Gallery, Cupboard, and Method views. It has no remote assets. Dynamic values are rendered with DOM element creation and `textContent`, never `innerHTML`.
 
-## 9. Non-goals
+## 9. Cupboard assembly context
+
+The Cupboard is a browser-local projection over a validated Cabinet Snapshot. It does not alter the canonical v1 observation contract.
+
+- A **Host** is the single Exhibit whose selected directions define an arrangement.
+- A **Contribution Piece** is one donor Evidence record or Fragment connected to one host direction by a visible deterministic rule.
+- An **Arrangement** is a bounded set of Contribution Pieces from one or more unique donors.
+- **Steering** consists of goals, focus terms, donor preferences/exclusions, breadth, novelty policy, compatibility policy, risk ceiling, and locked pieces.
+- A **Variant** is one immutable result of applying Steering to a snapshot. Iteration appends variants rather than silently replacing the current result.
+
+Candidate eligibility uses existing directional Affinities first. A user-directed test goal may additionally use a donor test Provision when host and donor share an observed code language. Documentation patterns remain advisory. Browser-derived ranking is explicitly a workspace heuristic, never a scanner score.
+
+Every Piece carries a host observation where one exists, its matching factors, donor path/line Evidence, intended adaptation mode, and cautions. The UI must not claim buildability, API compatibility, behavioral equivalence, dependency compatibility, license compatibility, or correctness. Truncation and shallow-fragment limitations propagate visibly.
+
+Arrangement selection is deterministic: stable candidate ordering, explicit integer controls, bounded donor/piece counts, and stable offset-based alternatives. Locks survive later iterations when still eligible. Exclusions cannot silently remove a locked piece. Comparison is capped at three variants.
+
+### Architecture drift audit
+
+The Observation context owns scanning and immutable Evidence. The Compatibility projection owns atomic donor-to-host claims. The Cupboard owns Steering and bounded arrangement selection. Presentation owns human labels and controls. None may reopen, execute, or modify a scanned source root. `Affinity` and `Resurrection Recipe` remain v1 compatibility terms; new UI code must not broaden their meaning into verified semantic compatibility.
+
+## 10. Non-goals
 
 Deep AST analysis, semantic equivalence, generated patches, dependency installation, remote repositories, network discovery, full secret classification, and filesystem watching are outside the MVP.
