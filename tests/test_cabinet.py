@@ -457,8 +457,10 @@ for (const [index, mutation] of mutations.entries()) { let rejected = false; try
             "capability-list-status", "capability-list", "capability-detail-heading",
             "capability-detail-body", "add-capability-mashup", "capability-map-heading",
             "capability-graph", "capability-svg-title", "capability-svg-desc",
-            "mashup-heading", "mashup-tray", "clear-mashup", "mashup-graph",
-            "mashup-svg-title", "mashup-svg-desc",
+            "mashup-heading", "mashup-selection-status", "mashup-tray", "clear-mashup",
+            "mashup-features-heading", "mashup-feature-controls", "mashup-visual-heading",
+            "mashup-graph", "mashup-svg-title", "mashup-svg-desc",
+            "mashup-connections-heading", "mashup-connection-list",
         )
         preserved_ids = (
             "tab-gallery", "gallery", "gallery-grid", "tab-cupboard", "cupboard",
@@ -476,13 +478,17 @@ for (const [index, mutation] of mutations.entries()) { let rejected = false; try
         self.assertIn('setAttribute("aria-pressed"', app)
         self.assertNotIn('setAttribute("role", "option")', app)
         for disclaimer in (
-            "Concept only.", "does not infer runtime, API, build, license, behavioral, security, or deployment compatibility",
-            "Visible lines represent only", "not compatibility claims",
+            "Concept only.", "Neither establishes runtime, API, schema, build, license, behavioral, security, or deployment compatibility",
+            "Every visual connection has a textual explanation", "it is not evidence that projects cannot work together",
         ):
             self.assertIn(disclaimer, html)
         self.assertIn("Bounded to 18 nodes", html)
         self.assertIn("Add up to 4 profiles", html)
-        self.assertIn("Conceptual Mashup is limited to 4 profiles", app)
+        self.assertIn("MAX_MASHUP_PROJECTS = 4", app)
+        self.assertIn("MAX_MASHUP_FEATURES = 14", app)
+        self.assertIn('role="status" aria-live="polite"', html)
+        self.assertIn('checkbox.type = "checkbox"', app)
+        self.assertIn('event.key === "Enter" || event.key === " "', app)
 
         list_renderer = app.split("function renderCapabilityList()", 1)[1].split("function selectCapabilityProfile", 1)[0]
         self.assertIn("capabilityIndexes.profiles.filter", list_renderer)
@@ -561,6 +567,56 @@ const first = JSON.stringify(mashup);
 for (let run = 0; run < 5; run += 1) if (JSON.stringify(engine.conceptualMashupGraph(indexes, requested, 999)) !== first) throw new Error("Conceptual Mashup is not deterministic");
 const onlyInvalid = engine.conceptualMashupGraph(indexes, ["missing-a", "missing-b"], 18);
 if (onlyInvalid.projectIds.length || onlyInvalid.nodes.length || onlyInvalid.edges.length) throw new Error("invalid mashup IDs did not fail closed");
+'''
+        result = subprocess.run(
+            ["node", "-e", script, str(static / "cupboard.js")],
+            capture_output=True, text=True, timeout=10,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_interactive_mashup_filters_features_and_explains_grounded_connections(self):
+        static = Path(cabinet.__file__).with_name("static")
+        script = r'''
+const engine = require(process.argv[1]);
+const profile = (id, name, display, features, accepts, produces, complement = null) => ({
+  exhibit_id: id, project: name, display_name: display, description: `${display} profile`,
+  feature_descriptions: features.map((feature) => ({name: feature, description: `${feature} detail`, evidence: ["README.md"]})),
+  provides: [], accepts, produces,
+  mashup_roles: complement ? [{role: "Declared bridge", why: "The source profile names its counterpart.", complements: [complement], evidence: ["README.md"]}] : [],
+});
+const profiles = [
+  profile("ex-a", "alpha", "Alpha", ["Export", "Validate"], [], [" JSON stream "], "Beta"),
+  profile("ex-b", "beta", "Beta", ["Import", "Store"], ["json   stream"], []),
+  profile("ex-c", "charlie", "Duplicate", ["Observe"], [], [], "Duplicate"),
+  profile("ex-d", "delta", "Duplicate", ["Report"], [], []),
+];
+const indexes = engine.buildCapabilityIndexes({projects: profiles});
+if (indexes.byDisplayName.has("Duplicate") || indexes.displayNameCandidates.get("Duplicate").length !== 2) throw new Error("ambiguous display name resolved");
+const selected = new Set(["ex-a:feature:1", "ex-b:feature:0", "ex-b:feature:0", "unknown:feature:0"]);
+const graph = engine.conceptualMashupGraph(indexes, ["ex-b", "ex-a"], 18, selected);
+const nodeIds = new Set(graph.nodes.map((item) => item.id));
+if (graph.nodes.length !== 4 || !nodeIds.has("ex-a") || !nodeIds.has("ex-b") || !nodeIds.has("ex-a:feature:1") || !nodeIds.has("ex-b:feature:0")) throw new Error("explicit feature selection was not exact");
+if (nodeIds.has("ex-a:feature:0") || nodeIds.has("unknown:feature:0")) throw new Error("unselected or unknown feature survived");
+if (!graph.edges.every((edge) => edge.grounded === true && nodeIds.has(edge.from) && nodeIds.has(edge.to))) throw new Error("ungrounded or dangling edge");
+const kinds = new Set(graph.connections.map((item) => item.kind));
+if (!kinds.has("declared-complement") || !kinds.has("exact-handoff")) throw new Error("grounded connection kinds missing");
+const handoff = graph.connections.find((item) => item.kind === "exact-handoff");
+if (!handoff.reason.includes("exactly matches") || !handoff.limitation.includes("not verified")) throw new Error("handoff explanation overclaims");
+if (graph.compatibilityInferred !== false || graph.truncated) throw new Error("graph flags are incorrect");
+const empty = engine.conceptualMashupGraph(indexes, ["ex-a", "ex-b"], 18, new Set());
+if (empty.nodes.length !== 2 || empty.featureIds.length || empty.edges.some((edge) => edge.relationship === "feature")) throw new Error("explicit empty feature selection was not preserved");
+const reversed = engine.conceptualMashupGraph(indexes, ["ex-a", "ex-b"], 18, new Set([...selected].reverse()));
+if (JSON.stringify(graph) !== JSON.stringify(reversed)) throw new Error("selection insertion order changed graph output");
+const ambiguous = engine.conceptualMashupGraph(indexes, ["ex-c", "ex-d"], 18, new Set());
+if (ambiguous.connections.length) throw new Error("ambiguous complement became a connection");
+const floodProfiles = Array.from({length:4}, (_item, index) => {
+  const names = ["Flood A", "Flood B", "Flood C", "Flood D"];
+  return profile(`flood-${index}`, `flood-${index}`, names[index], [], [], [], null);
+}).map((item, index, all) => ({...item, mashup_roles:Array.from({length:32}, (_role, roleIndex) => ({role:`role-${roleIndex}`, why:"bounded lead", evidence:["README.md"], complements:all.filter((_target, targetIndex) => targetIndex !== index).map((target) => target.display_name)}))}));
+const floodIndexes = engine.buildCapabilityIndexes({projects:floodProfiles});
+const flood = engine.conceptualMashupGraph(floodIndexes, floodProfiles.map((item) => item.exhibit_id), 18, new Set());
+if (flood.nodes.length !== 4 || flood.connections.length !== 24 || flood.edges.length !== 24 || flood.connectionCount !== 384 || flood.omittedConnectionCount !== 360 || !flood.connectionsTruncated) throw new Error("connection cap or omission accounting failed");
+if (!flood.edges.every((edge) => new Set(flood.nodes.map((item) => item.id)).has(edge.from) && new Set(flood.nodes.map((item) => item.id)).has(edge.to))) throw new Error("bounded connection produced dangling edge");
 '''
         result = subprocess.run(
             ["node", "-e", script, str(static / "cupboard.js")],

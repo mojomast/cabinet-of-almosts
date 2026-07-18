@@ -443,7 +443,28 @@ function wireGraphControls() {
   $("intent-note").addEventListener("input", updateBrief); $("copy-brief").addEventListener("click", copyBrief);
 }
 
-const capabilityWorkspace = { selectedId: null, mashupIds: new Set() };
+const capabilityWorkspace = { selectedId: null, mashupIds: new Set(), featureIds: new Set() };
+const MAX_MASHUP_PROJECTS = 4; const MAX_MASHUP_FEATURES = 14;
+
+function capabilityFeatureId(exhibitId, index) { return `${exhibitId}:feature:${index}`; }
+
+function announceMashup(message = "") {
+  const projects = capabilityWorkspace.mashupIds.size; const features = capabilityWorkspace.featureIds.size;
+  $("mashup-selection-status").textContent = `${projects} of ${MAX_MASHUP_PROJECTS} projects · ${features} of ${MAX_MASHUP_FEATURES} features selected.${message ? ` ${message}` : ""}`;
+}
+
+function removeMashupProject(id, restoreFocus = false) {
+  const profile = workspace.capabilityIndexes?.byExhibitId.get(id); if (!profile) return;
+  capabilityWorkspace.mashupIds.delete(id); [...capabilityWorkspace.featureIds].filter((key) => key.startsWith(`${id}:feature:`)).forEach((key) => capabilityWorkspace.featureIds.delete(key));
+  renderMashup(); renderCapabilityList(); if (capabilityWorkspace.selectedId) selectCapabilityProfile(capabilityWorkspace.selectedId); announceMashup(`${profile.display_name} removed.`); if (restoreFocus) document.querySelector(`[data-project-id="${CSS.escape(id)}"]`)?.focus();
+}
+
+function toggleMashupProject(id, selected, restoreFocus = false) {
+  const profile = workspace.capabilityIndexes?.byExhibitId.get(id); if (!profile) return;
+  if (!selected) { removeMashupProject(id, restoreFocus); return; }
+  if (capabilityWorkspace.mashupIds.size >= MAX_MASHUP_PROJECTS) { renderCapabilityList(); announceMashup(`The project limit is ${MAX_MASHUP_PROJECTS}. Remove one before adding ${profile.display_name}.`); return; }
+  capabilityWorkspace.mashupIds.add(id); capabilityWorkspace.selectedId = id; renderMashup(); renderCapabilityList(); selectCapabilityProfile(id); announceMashup(`${profile.display_name} added. Choose its features.`); if (restoreFocus) document.querySelector(`[data-project-id="${CSS.escape(id)}"]`)?.focus();
+}
 
 function validateCapabilityMap(map) {
   const profiles = map?.projects;
@@ -479,7 +500,7 @@ function addProfileSection(parent, heading, items, describe) {
   items.forEach((item) => { const row = node("li"); const value = describe(item); add(row, node("strong", value.label), value.detail ? node("p", value.detail) : null); if ((item.evidence || []).length) { const evidence = node("details"); add(evidence, node("summary", `Source evidence (${item.evidence.length})`)); const paths = node("ul"); item.evidence.forEach((entry) => add(paths, node("li", entry))); add(evidence, paths); add(row, evidence); } add(list, row); }); add(parent, list);
 }
 
-function renderProfileSvg(graph, svgId, titleId, descId, title, description) {
+function renderProfileSvg(graph, svgId, titleId, descId, title, description, onFeatureToggle = null) {
   const svg = clear($(svgId)); add(svg, svgNode("title", { id: titleId }, title), svgNode("desc", { id: descId }, description));
   if (!graph.nodes.length) return;
   const locations = new Map(); const projects = graph.nodes.filter((item) => item.kind === "project"); const others = graph.nodes.filter((item) => item.kind !== "project");
@@ -487,13 +508,23 @@ function renderProfileSvg(graph, svgId, titleId, descId, title, description) {
   projects.forEach((item, index) => locations.set(item.id, { x: projects.length === 1 ? 450 : 110 + index * (680 / Math.max(1, projects.length - 1)), y: 85 }));
   others.forEach((item, index) => locations.set(item.id, { x: 75 + (index % 6) * 150, y: 220 + Math.floor(index / 6) * 125 }));
   graph.edges.forEach((edge) => { const from = locations.get(edge.from); const to = locations.get(edge.to); if (from && to) add(svg, svgNode("line", { x1: from.x, y1: from.y, x2: to.x, y2: to.y, class: `capability-edge edge-${edge.relationship}` })); });
-  graph.nodes.forEach((item) => { const point = locations.get(item.id); const group = svgNode("g", { class: `capability-node node-${item.kind}`, role: "img", "aria-label": `${item.kind}: ${item.label}` }); add(group, svgNode("circle", { cx: point.x, cy: point.y, r: item.kind === "project" ? 42 : 31 }), svgNode("text", { x: point.x, y: point.y + 4, "text-anchor": "middle" }, item.label.slice(0, item.kind === "project" ? 18 : 12))); add(svg, group); });
+  graph.nodes.forEach((item) => {
+    const point = locations.get(item.id); const interactive = item.kind === "feature" && onFeatureToggle; const attributes = { class: `capability-node node-${item.kind}${interactive ? " interactive" : ""}`, role: interactive ? "button" : "img", "aria-label": `${item.kind}: ${item.label}${interactive ? "; activate to deselect" : ""}` };
+    if (interactive) { attributes.tabindex = "0"; attributes["aria-pressed"] = "true"; }
+    const group = svgNode("g", attributes); add(group, svgNode("title", {}, `${item.label}${item.detail ? ` — ${item.detail}` : ""}`), svgNode("circle", { cx: point.x, cy: point.y, r: item.kind === "project" ? 42 : 31 }), svgNode("text", { x: point.x, y: point.y + 4, "text-anchor": "middle" }, item.label.slice(0, item.kind === "project" ? 18 : 12)));
+    if (interactive) { const activate = () => onFeatureToggle(item.id); group.addEventListener("click", activate); group.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); activate(); } }); }
+    add(svg, group);
+  });
 }
 
 function renderCapabilityList() {
   if (!workspace.capabilityIndexes) return; const query = $("capability-search").value.trim().toLowerCase(); const list = clear($("capability-list"));
   const profiles = workspace.capabilityIndexes.profiles.filter((profile) => !query || profileHaystack(profile).includes(query)).sort((a, b) => compareText(a.display_name, b.display_name) || compareText(a.exhibit_id, b.exhibit_id));
-  profiles.forEach((profile) => { const button = node("button", undefined, `capability-choice${profile.exhibit_id === capabilityWorkspace.selectedId ? " active" : ""}`); button.type = "button"; button.setAttribute("aria-pressed", String(profile.exhibit_id === capabilityWorkspace.selectedId)); add(button, node("strong", profile.display_name), node("small", `${profile.provides.length} capabilities · ${profile.mashup_roles.length} roles`)); button.addEventListener("click", () => selectCapabilityProfile(profile.exhibit_id, true)); add(list, button); });
+  profiles.forEach((profile) => {
+    const row = node("div", undefined, `capability-choice${profile.exhibit_id === capabilityWorkspace.selectedId ? " active" : ""}`); const label = node("label", undefined, "capability-select"); const checkbox = document.createElement("input"); checkbox.type = "checkbox"; checkbox.checked = capabilityWorkspace.mashupIds.has(profile.exhibit_id); checkbox.disabled = !checkbox.checked && capabilityWorkspace.mashupIds.size >= MAX_MASHUP_PROJECTS; checkbox.dataset.projectId = profile.exhibit_id; checkbox.setAttribute("aria-label", `Select ${profile.display_name} for the Interactive Mashup`); checkbox.addEventListener("change", () => toggleMashupProject(profile.exhibit_id, checkbox.checked, true));
+    const text = node("span"); add(text, node("strong", profile.display_name), node("small", `${profile.feature_descriptions.length} features · ${profile.provides.length} capabilities · ${profile.mashup_roles.length} roles`)); add(label, checkbox, text);
+    const inspect = node("button", "Inspect", "quiet inspect-profile"); inspect.type = "button"; inspect.setAttribute("aria-pressed", String(profile.exhibit_id === capabilityWorkspace.selectedId)); inspect.addEventListener("click", () => selectCapabilityProfile(profile.exhibit_id, true)); add(row, label, inspect); add(list, row);
+  });
   if (!profiles.length) add(list, node("p", "No profiles match this search.", "empty compact"));
   $("capability-list-status").textContent = `Showing ${profiles.length} of ${workspace.capabilityIndexes.profiles.length} complete profiles${query ? "; search is active" : ""}.`;
   $("clear-capability-search").disabled = !query;
@@ -510,25 +541,49 @@ function selectCapabilityProfile(id, focus = false) {
   addProfileSection(body, "Mashup roles", profile.mashup_roles, (item) => ({ label: item.role, detail: `${item.why}${item.complements.length ? ` Declared complements: ${item.complements.join(", ")}.` : ""}` }));
   add(body, node("h4", "Ecosystem and maturity"), node("p", `${typeof profile.ecosystem === "object" ? JSON.stringify(profile.ecosystem) : profile.ecosystem} · ${Array.isArray(profile.maturity_signals) ? profile.maturity_signals.join(" · ") : typeof profile.maturity_signals === "object" ? JSON.stringify(profile.maturity_signals) : profile.maturity_signals}`), node("h4", "Inspected paths")); const paths = node("ul", undefined, "inspected-paths"); profile.inspected_paths.forEach((path) => add(paths, node("li", path))); add(body, paths);
   const graph = CabinetCupboard.capabilityGraphForProject(workspace.capabilityIndexes, id, 18); renderProfileSvg(graph, "capability-graph", "capability-svg-title", "capability-svg-desc", `${profile.display_name} declared relationships`, `${graph.nodes.length} source-declared nodes. ${graph.truncated ? "The visual is bounded; the profile detail is complete." : "The visual contains all declared nodes."}`);
-  $("add-capability-mashup").disabled = capabilityWorkspace.mashupIds.has(id); $("add-capability-mashup").textContent = capabilityWorkspace.mashupIds.has(id) ? "Profile is in Conceptual Mashup" : "Add profile to Conceptual Mashup"; if (focus) $("capability-detail-heading").focus();
+  const alreadySelected = capabilityWorkspace.mashupIds.has(id); const atLimit = capabilityWorkspace.mashupIds.size >= MAX_MASHUP_PROJECTS; $("add-capability-mashup").disabled = alreadySelected || atLimit; $("add-capability-mashup").textContent = alreadySelected ? "Profile is in Interactive Mashup" : atLimit ? "Interactive Mashup project limit reached" : "Add profile to Interactive Mashup"; if (focus) $("capability-detail-heading").focus();
 }
 
 function renderMashup() {
   const tray = clear($("mashup-tray")); const ids = [...capabilityWorkspace.mashupIds];
   if (!ids.length) add(tray, node("p", "No profiles selected. Add up to 4 profiles.", "empty compact"));
-  ids.forEach((id) => { const profile = workspace.capabilityIndexes.byExhibitId.get(id); const item = node("div", undefined, "mashup-item"); add(item, node("strong", profile.display_name)); const remove = node("button", "Remove", "quiet"); remove.type = "button"; remove.addEventListener("click", () => { capabilityWorkspace.mashupIds.delete(id); renderMashup(); selectCapabilityProfile(capabilityWorkspace.selectedId); }); add(item, remove); add(tray, item); });
-  $("clear-mashup").disabled = !ids.length; const graph = CabinetCupboard.conceptualMashupGraph(workspace.capabilityIndexes, ids, 18);
-  renderProfileSvg(graph, "mashup-graph", "mashup-svg-title", "mashup-svg-desc", `Conceptual Mashup of ${ids.length} profiles`, `${graph.nodes.length} source-declared role and feature nodes. No runtime compatibility is inferred.`);
+  ids.forEach((id) => {
+    const profile = workspace.capabilityIndexes.byExhibitId.get(id); const count = [...capabilityWorkspace.featureIds].filter((key) => key.startsWith(`${id}:feature:`)).length; const item = node("div", undefined, "mashup-item"); const text = node("span"); add(text, node("strong", profile.display_name), node("small", `${count} features selected`)); const remove = node("button", "Remove", "quiet"); remove.type = "button"; remove.addEventListener("click", () => { removeMashupProject(id); (document.querySelector("#mashup-tray button") || $("mashup-heading")).focus(); }); add(item, text, remove); add(tray, item);
+  });
+  const controls = clear($("mashup-feature-controls"));
+  if (!ids.length) add(controls, node("p", "Choose a project to select its features.", "empty compact"));
+  ids.forEach((id) => {
+    const profile = workspace.capabilityIndexes.byExhibitId.get(id); const fieldset = node("fieldset", undefined, "mashup-project-features"); add(fieldset, node("legend", profile.display_name));
+    if (!profile.feature_descriptions.length) add(fieldset, node("p", "This profile declares no features.", "empty compact"));
+    profile.feature_descriptions.forEach((feature, index) => {
+      const key = capabilityFeatureId(id, index); const label = node("label", undefined, "mashup-feature-choice"); const checkbox = document.createElement("input"); checkbox.type = "checkbox"; checkbox.checked = capabilityWorkspace.featureIds.has(key); checkbox.disabled = !checkbox.checked && capabilityWorkspace.featureIds.size >= MAX_MASHUP_FEATURES; checkbox.dataset.featureId = key;
+      checkbox.addEventListener("change", () => { const selected = checkbox.checked; if (selected) capabilityWorkspace.featureIds.add(key); else capabilityWorkspace.featureIds.delete(key); renderMashup(); announceMashup(`${feature.name} ${selected ? "selected" : "deselected"}.`); document.querySelector(`[data-feature-id="${CSS.escape(key)}"]`)?.focus(); });
+      const text = node("span"); add(text, node("strong", feature.name), node("small", feature.description)); add(label, checkbox, text); add(fieldset, label);
+    });
+    add(controls, fieldset);
+  });
+  $("clear-mashup").disabled = !ids.length; const graph = CabinetCupboard.conceptualMashupGraph(workspace.capabilityIndexes, ids, 18, capabilityWorkspace.featureIds);
+  const toggleFromGraph = (featureId) => { capabilityWorkspace.featureIds.delete(featureId); renderMashup(); announceMashup("Feature deselected from the graph. Use its checkbox to restore it."); const control = document.querySelector(`[data-feature-id="${CSS.escape(featureId)}"]`); if (control) control.focus(); };
+  renderProfileSvg(graph, "mashup-graph", "mashup-svg-title", "mashup-svg-desc", `Interactive Mashup of ${ids.length} projects`, `${ids.length} selected projects, ${graph.featureIds.length} selected features, and ${graph.connections.length} of ${graph.connectionCount} declaration leads shown. No runtime compatibility is inferred.`, toggleFromGraph);
+  const connectionList = clear($("mashup-connection-list"));
+  if (ids.length < 2) add(connectionList, node("p", "Choose at least two projects to compare their declarations.", "empty compact")); else if (!graph.connections.length) add(connectionList, node("p", "No uniquely resolved complement or exact declared output-to-input wording match was found. This is not evidence that these projects cannot work together.", "empty compact"));
+  if (graph.connectionsTruncated) add(connectionList, node("p", `Showing the first ${graph.connections.length} of ${graph.connectionCount} deterministic declaration leads; ${graph.omittedConnectionCount} are omitted from this bounded view. Refine the selected projects to inspect a different set.`, "notice compact"));
+  graph.connections.forEach((connection) => {
+    const article = node("article", undefined, `mashup-connection connection-${connection.kind}`); add(article, node("span", connection.kind === "declared-complement" ? "Declared complement" : "Exact declaration handoff", "kicker"), node("h5", connection.label), node("p", connection.reason), node("p", `Witness: ${connection.witness}`, "connection-witness"));
+    if (connection.evidence.length) { const details = node("details"); add(details, node("summary", `Source evidence (${connection.evidence.length})`)); const paths = node("ul"); connection.evidence.forEach((path) => add(paths, node("li", path))); add(details, paths); add(article, details); }
+    add(article, node("p", connection.limitation, "connection-limitation")); add(connectionList, article);
+  });
+  announceMashup();
 }
 
 function wireCapabilityControls() {
   $("capability-search").addEventListener("input", renderCapabilityList); $("clear-capability-search").addEventListener("click", () => { $("capability-search").value = ""; renderCapabilityList(); $("capability-search").focus(); });
-  $("add-capability-mashup").addEventListener("click", () => { const id = capabilityWorkspace.selectedId; if (!id || capabilityWorkspace.mashupIds.has(id)) return; if (capabilityWorkspace.mashupIds.size >= 4) { $("capability-status").textContent = "Conceptual Mashup is limited to 4 profiles."; return; } capabilityWorkspace.mashupIds.add(id); renderMashup(); selectCapabilityProfile(id); });
-  $("clear-mashup").addEventListener("click", () => { capabilityWorkspace.mashupIds.clear(); renderMashup(); if (capabilityWorkspace.selectedId) selectCapabilityProfile(capabilityWorkspace.selectedId); });
+  $("add-capability-mashup").addEventListener("click", () => { const id = capabilityWorkspace.selectedId; if (!id || capabilityWorkspace.mashupIds.has(id)) return; toggleMashupProject(id, true); });
+  $("clear-mashup").addEventListener("click", () => { capabilityWorkspace.mashupIds.clear(); capabilityWorkspace.featureIds.clear(); renderMashup(); renderCapabilityList(); if (capabilityWorkspace.selectedId) selectCapabilityProfile(capabilityWorkspace.selectedId); announceMashup("Selection cleared."); });
 }
 
 function rejectCapabilityMap(reason = "") {
-  workspace.capabilityMap = null; workspace.capabilityIndexes = null; capabilityWorkspace.selectedId = null; capabilityWorkspace.mashupIds.clear();
+  workspace.capabilityMap = null; workspace.capabilityIndexes = null; capabilityWorkspace.selectedId = null; capabilityWorkspace.mashupIds.clear(); capabilityWorkspace.featureIds.clear();
   $("capability-search").value = ""; $("capability-search").disabled = true; $("capability-workbench").classList.add("hidden");
   if (reason) console.warn(`Capability Map rejected: ${reason}`);
 }
@@ -538,7 +593,7 @@ function loadCapabilityMap() {
   fetch("/capability-map.json", { cache: "no-store" }).then((response) => { if (response.status === 204 || response.status === 404) return null; if (!response.ok) throw new Error(`Capability Map returned HTTP ${response.status}.`); return response.json(); }).then((map) => {
     if (!map) { rejectCapabilityMap(); return; }
     const valid = validateCapabilityMap(map); const indexes = CabinetCupboard.buildCapabilityIndexes(valid); workspace.capabilityMap = valid; workspace.capabilityIndexes = indexes;
-    capabilityWorkspace.selectedId = indexes.profiles.slice().sort((a, b) => compareText(a.display_name, b.display_name) || compareText(a.exhibit_id, b.exhibit_id))[0]?.exhibit_id || null; capabilityWorkspace.mashupIds.clear(); $("capability-workbench").classList.remove("hidden"); $("capability-search").disabled = false;
+    capabilityWorkspace.selectedId = indexes.profiles.slice().sort((a, b) => compareText(a.display_name, b.display_name) || compareText(a.exhibit_id, b.exhibit_id))[0]?.exhibit_id || null; capabilityWorkspace.mashupIds.clear(); capabilityWorkspace.featureIds.clear(); $("capability-workbench").classList.remove("hidden"); $("capability-search").disabled = false;
     $("capability-status").textContent = `${indexes.profiles.length} exact-corpus Capability Profiles loaded. All relationships below are source-declared; runtime compatibility is not inferred.`; renderCapabilityList(); if (capabilityWorkspace.selectedId) selectCapabilityProfile(capabilityWorkspace.selectedId); renderMashup(); renderGallery();
   }).catch((error) => { rejectCapabilityMap(error.message); renderGallery(); });
 }

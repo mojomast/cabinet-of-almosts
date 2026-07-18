@@ -314,14 +314,15 @@
   /* Pure, source-declared projections for the optional Capability Map. */
   function buildCapabilityIndexes(capabilityMap) {
     const profiles = Array.isArray(capabilityMap) ? capabilityMap : (capabilityMap?.projects || capabilityMap?.profiles || []);
-    const byExhibitId = new Map(); const byProject = new Map(); const byDisplayName = new Map();
+    const byExhibitId = new Map(); const byProject = new Map(); const displayNameCandidates = new Map();
     profiles.forEach((profile) => {
       if (!profile || typeof profile.exhibit_id !== "string") return;
       byExhibitId.set(profile.exhibit_id, profile);
       if (typeof profile.project === "string") byProject.set(profile.project, profile);
-      if (typeof profile.display_name === "string") byDisplayName.set(profile.display_name, profile);
+      if (typeof profile.display_name === "string") { const candidates = displayNameCandidates.get(profile.display_name) || []; candidates.push(profile); displayNameCandidates.set(profile.display_name, candidates); }
     });
-    return { profiles: [...profiles], byExhibitId, byProject, byDisplayName };
+    const byDisplayName = new Map([...displayNameCandidates].filter((entry) => entry[1].length === 1).map(([name, candidates]) => [name, candidates[0]]));
+    return { profiles: [...profiles], byExhibitId, byProject, byDisplayName, displayNameCandidates };
   }
 
   function capabilityGraphForProject(capabilityMapOrIndexes, indexesOrId, exhibitIdOrMax = 18, requestedMaxNodes = 18) {
@@ -350,24 +351,45 @@
     return { projectId: exhibitId, nodes, edges: edges.filter((edge) => keys.has(edge.from) && keys.has(edge.to)), truncated: declaredCount > nodes.length };
   }
 
-  function conceptualMashupGraph(capabilityMapOrIndexes, indexesOrIds, projectIdsOrMax = 18, requestedMaxNodes = 18) {
+  function conceptualMashupGraph(capabilityMapOrIndexes, indexesOrIds, projectIdsOrMax = 18, requestedMaxNodes = 18, requestedFeatureIds) {
     const suppliedIndexes = indexesOrIds?.byExhibitId instanceof Map;
     const indexes = suppliedIndexes ? indexesOrIds : (capabilityMapOrIndexes?.byExhibitId instanceof Map ? capabilityMapOrIndexes : buildCapabilityIndexes(capabilityMapOrIndexes));
     const projectIds = suppliedIndexes ? projectIdsOrMax : indexesOrIds;
     const maxNodes = suppliedIndexes ? requestedMaxNodes : projectIdsOrMax;
+    const featureSelection = suppliedIndexes ? requestedFeatureIds : requestedMaxNodes;
     const ids = [...new Set(projectIds || [])].slice(0, 4).filter((id) => indexes.byExhibitId.has(id)).sort(compareText); const limit = Math.max(ids.length, Math.min(18, Number(maxNodes) || 18));
-    const nodes = []; const edges = []; const nodeIds = new Set();
+    const nodes = []; const edges = []; const connectionCandidates = []; const nodeIds = new Set();
     function addNode(item) { if (!nodeIds.has(item.id) && nodes.length < limit) { nodeIds.add(item.id); nodes.push(item); return true; } return false; }
     ids.forEach((id) => { const profile = indexes.byExhibitId.get(id); addNode({ id, label: profile.display_name || profile.project, kind: "project", detail: profile.description || "" }); });
+    const allFeatureIds = ids.flatMap((id) => (indexes.byExhibitId.get(id).feature_descriptions || []).map((_item, index) => `${id}:feature:${index}`));
+    const selectedFeatureIds = featureSelection instanceof Set || Array.isArray(featureSelection) ? [...new Set(featureSelection)] : allFeatureIds;
+    const ownedFeatureIds = selectedFeatureIds.filter((key) => allFeatureIds.includes(key));
+    const validFeatureIds = ownedFeatureIds.sort(compareText).slice(0, Math.max(0, limit - ids.length));
     ids.forEach((id) => {
-      const profile = indexes.byExhibitId.get(id); const declarations = [
-        ...(profile.mashup_roles || []).map((item, index) => ({ id: `${id}:role:${index}`, label: item.role, kind: "role", detail: item.why })),
-        ...(profile.feature_descriptions || []).map((item, index) => ({ id: `${id}:feature:${index}`, label: item.name, kind: "feature", detail: item.description })),
-      ];
-      declarations.forEach((item) => { if (addNode(item)) edges.push({ from: id, to: item.id, relationship: item.kind, declared: true }); });
-      (profile.mashup_roles || []).forEach((role, roleIndex) => (role.complements || []).forEach((complement) => { const target = indexes.byExhibitId.get(complement) || indexes.byProject.get(complement) || indexes.byDisplayName.get(complement); if (target && ids.includes(target.exhibit_id) && nodeIds.has(`${id}:role:${roleIndex}`)) edges.push({ from: `${id}:role:${roleIndex}`, to: target.exhibit_id, relationship: "complements", declared: true }); }));
+      const profile = indexes.byExhibitId.get(id);
+      (profile.feature_descriptions || []).forEach((item, index) => { const featureId = `${id}:feature:${index}`; if (validFeatureIds.includes(featureId) && addNode({ id: featureId, label: item.name, kind: "feature", detail: item.description, projectId: id, evidence: [...(item.evidence || [])] })) edges.push({ from: id, to: featureId, relationship: "feature", declared: true, grounded: true }); });
     });
-    return { projectIds: ids, nodes, edges: edges.filter((edge) => nodeIds.has(edge.from) && nodeIds.has(edge.to)), truncated: nodes.length >= limit, compatibilityInferred: false };
+    const normalize = (value) => String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
+    const addConnection = (connection) => connectionCandidates.push(connection);
+    ids.forEach((fromId) => {
+      const from = indexes.byExhibitId.get(fromId);
+      ids.filter((toId) => toId !== fromId).forEach((toId) => {
+        const to = indexes.byExhibitId.get(toId);
+        (from.mashup_roles || []).forEach((role, roleIndex) => (role.complements || []).forEach((label, complementIndex) => {
+          const target = indexes.byExhibitId.get(label) || indexes.byProject.get(label) || indexes.byDisplayName.get(label);
+          if (target?.exhibit_id !== toId) return;
+          addConnection({ id: `complement:${fromId}:${toId}:${roleIndex}:${complementIndex}`, kind: "declared-complement", from: fromId, to: toId, label: `${from.display_name} names ${to.display_name} as a complement`, reason: role.why, witness: `${role.role}: ${label}`, evidence: [...(role.evidence || [])], limitation: "Source-declared complement; runtime and integration behavior were not verified." });
+        }));
+        const inputs = new Map((to.accepts || []).map((label) => [normalize(label), label]).filter((entry) => entry[0]));
+        (from.produces || []).forEach((output, outputIndex) => { const key = normalize(output); if (!key || !inputs.has(key)) return; const input = inputs.get(key);
+          addConnection({ id: `handoff:${fromId}:${toId}:${outputIndex}`, kind: "exact-handoff", from: fromId, to: toId, label: `${from.display_name} → ${to.display_name}`, reason: `Declared output “${output}” exactly matches declared input “${input}” after case and whitespace normalization.`, witness: `${output} → ${input}`, evidence: [], limitation: "Lexical declaration match only; formats, schemas, APIs, versions, and runtime behavior were not verified." });
+        });
+      });
+    });
+    connectionCandidates.sort((a, b) => compareText(a.kind, b.kind) || compareText(a.from, b.from) || compareText(a.to, b.to) || compareText(a.witness, b.witness) || compareText(a.id, b.id));
+    const seenConnections = new Set(); const uniqueConnections = connectionCandidates.filter((connection) => { const key = `${connection.kind}|${connection.from}|${connection.to}|${normalize(connection.witness)}`; if (seenConnections.has(key)) return false; seenConnections.add(key); return true; });
+    const connections = uniqueConnections.slice(0, 24); connections.forEach((connection) => edges.push({ from: connection.from, to: connection.to, relationship: connection.kind, declared: connection.kind === "declared-complement", grounded: true, connectionId: connection.id }));
+    return { projectIds: ids, featureIds: validFeatureIds, nodes, edges: edges.filter((edge) => nodeIds.has(edge.from) && nodeIds.has(edge.to)), connections, connectionCount: uniqueConnections.length, omittedConnectionCount: Math.max(0, uniqueConnections.length - connections.length), connectionsTruncated: uniqueConnections.length > connections.length, truncated: ownedFeatureIds.length > validFeatureIds.length, compatibilityInferred: false };
   }
 
   function stableJson(value) {

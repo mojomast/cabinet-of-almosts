@@ -135,12 +135,28 @@
           </section>
         </div>
         <section class="mashup-builder" aria-labelledby="mashup-heading">
-          <div class="pane-heading"><span>04</span><h3 id="mashup-heading">Conceptual Mashup</h3></div>
-          <p class="mashup-disclaimer"><strong>Concept only.</strong> This deterministic juxtaposition repeats source-declared roles and features. It does not infer runtime, API, build, license, behavioral, security, or deployment compatibility.</p>
+          <div class="pane-heading"><span>04</span><h3 id="mashup-heading" tabindex="-1">Interactive Mashup Workspace</h3></div>
+          <p class="mashup-disclaimer"><strong>Concept only.</strong> Select up to 4 projects and 14 individual features. Solid links repeat uniquely resolved source-declared complements; dashed links mark exact declared output-to-input wording matches. Neither establishes runtime, API, schema, build, license, behavioral, security, or deployment compatibility.</p>
+          <p id="mashup-selection-status" class="result-status" role="status" aria-live="polite">0 of 4 projects · 0 of 14 features selected.</p>
           <div id="mashup-tray" class="mashup-tray"><p class="empty compact">No profiles selected. Add up to 4 profiles.</p></div>
-          <button id="clear-mashup" class="quiet" type="button" disabled>Clear Conceptual Mashup</button>
-          <svg id="mashup-graph" viewBox="0 0 900 560" role="group" aria-labelledby="mashup-svg-title mashup-svg-desc"><title id="mashup-svg-title">Conceptual Mashup of selected profiles</title><desc id="mashup-svg-desc">No profiles selected. This graph never implies runtime compatibility.</desc></svg>
-          <p class="mashup-disclaimer">Visible lines represent only the selected profiles’ declared roles, features, and named complements; they are not compatibility claims.</p>
+          <button id="clear-mashup" class="quiet" type="button" disabled>Clear Interactive Mashup</button>
+          <div class="mashup-workspace">
+            <section class="mashup-feature-panel" aria-labelledby="mashup-features-heading">
+              <h4 id="mashup-features-heading">Choose features</h4>
+              <p class="control-help">Feature checkboxes control exactly which source-declared features appear. Selecting a feature does not claim it can be transferred.</p>
+              <div id="mashup-feature-controls" class="mashup-feature-controls"><p class="empty compact">Choose a project to select its features.</p></div>
+            </section>
+            <section class="mashup-visual-panel" aria-labelledby="mashup-visual-heading">
+              <h4 id="mashup-visual-heading">Selected project-feature graph</h4>
+              <svg id="mashup-graph" viewBox="0 0 900 560" role="group" aria-labelledby="mashup-svg-title mashup-svg-desc"><title id="mashup-svg-title">Interactive Mashup of selected projects and features</title><desc id="mashup-svg-desc">No projects selected. This graph never implies runtime compatibility.</desc></svg>
+              <div class="mashup-legend" aria-label="Graph line meanings"><span><i class="legend-ownership"></i>declares feature</span><span><i class="legend-complement"></i>declared complement</span><span><i class="legend-handoff"></i>exact output → input wording</span></div>
+            </section>
+            <aside class="mashup-connections" aria-labelledby="mashup-connections-heading">
+              <h4 id="mashup-connections-heading">How the selected projects may connect</h4>
+              <div id="mashup-connection-list"><p class="empty compact">Choose at least two projects to compare their declarations.</p></div>
+            </aside>
+          </div>
+          <p class="mashup-disclaimer">Every visual connection has a textual explanation above. Absence of a line means only that these bounded declaration rules found no lead; it is not evidence that projects cannot work together.</p>
         </section>
       </section>
 

@@ -1,6 +1,6 @@
 # The Cabinet of Almosts
 
-A local, read-only instrument for finding unfinished projects and evidence-supported ways their reusable pieces might help one another.
+A local, read-only instrument for understanding a software collection and exploring evidence-supported ways its projects and features might work together.
 
 The Cabinet is intentionally **not** an AI wrapper, code runner, build tool, or autonomous merger. It deterministically scans only roots you name, records bounded evidence, identifies shallow fragments, and derives directional affinities. The result is a canonical JSON snapshot and a static Gallery/Cupboard/Evidence graph/Method interface.
 
@@ -8,7 +8,7 @@ The **Cupboard** is an in-browser recombination instrument. Choose a host, selec
 
 The **Compatibility workbench** is a Host-centered projection over the same immutable snapshot. It keeps the canonical donor→Host Affinity direction visible and can add an optional SHA-256-bound sidecar of static manifest, ecosystem, interface, and role observations. It offers a complete keyboard-accessible donor list beside a bounded visual map and lets a person choose exact Contribution Pieces. The selected Arrangement produces a deterministic, copyable **Recombination Brief** for a coding agent. The Brief treats snapshot text as untrusted, cites stable Evidence/Affinity/compatibility-observation IDs and source fingerprints, requires source/license/API preflight, and never turns a static observation into a claim of runtime compatibility or correctness. The app itself still executes and writes nothing.
 
-The **Mashup map** can additionally mount an optional `cabinet-project-capability-map/v1` sidecar produced by a separate static code-review process. It gives every exact-corpus Exhibit a human-readable Capability Profile—purpose, features, accepted inputs, produced outputs, and declared Mashup Roles—plus a four-profile Conceptual Mashup. The sidecar is canonical-snapshot-bound, requires complete name/fingerprint coverage, cites only files admitted to the bound Exhibit, and is redacted before serving. Its graphs are source-declared conceptual projections, not runtime, API, build, license, security, or deployment compatibility claims. Generated capability maps stay outside Git.
+The **Mashup map** can additionally mount an optional `cabinet-project-capability-map/v1` sidecar produced by a separate static code-review process. It gives every exact-corpus Exhibit a human-readable Capability Profile—purpose, features, accepted inputs, produced outputs, and declared Mashup Roles—plus an Interactive Mashup Workspace. A person can select or deselect up to four projects and fourteen individual features, inspect the synchronized 18-node graph, and read a textual explanation for each bounded project-to-project lead. Leads are limited to uniquely resolved source-declared complements and exact output-to-input wording matches after case and whitespace normalization; at most 24 are shown, with omissions reported. The sidecar is canonical-snapshot-bound, requires complete name/fingerprint coverage, cites only files admitted to the bound Exhibit, and is redacted before serving. These are conceptual declaration projections, not runtime, API, schema, build, license, security, or deployment compatibility claims. Generated capability maps stay outside Git.
 
 ## Quick start
 
