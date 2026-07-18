@@ -20,6 +20,17 @@ Or scan and serve an in-memory snapshot:
 python3 cabinet.py serve ~/projects --port 8765
 ```
 
+### Historical autonomous-build collection
+
+The deployed Cabinet uses only the first Hermes Autonomous Project Builder cohort from June 27–29, 2026. Its explicit 23-project allowlist lives in `datasets/first-autonomous-cohort.txt`.
+
+```bash
+python3 scripts/build_historical_snapshot.py --output /tmp/cabinet-historical.json
+python3 cabinet.py serve-snapshot /tmp/cabinet-historical.json --port 18791
+```
+
+Later July iterations, ordinary projects under `~/projects`, Hermes state, and run logs are deliberately absent from this collection.
+
 A supplied directory with a recognizable project marker is an Exhibit. Otherwise the scanner discovers marked project directories up to depth 3; if none exist, the supplied directory itself becomes an Exhibit. At most 200 Exhibits are retained.
 
 Optional local git status is explicit:

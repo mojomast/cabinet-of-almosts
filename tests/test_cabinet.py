@@ -180,6 +180,13 @@ class CabinetFixture(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "outside supplied roots"):
             cabinet.output_path_is_safe(str(project / "cabinet.json"), [str(project)])
 
+    def test_ui_uses_human_labels_instead_of_opaque_ids(self):
+        app = (Path(cabinet.__file__).with_name("static") / "app.js").read_text(encoding="utf-8")
+        self.assertIn("Historical autonomous build", app)
+        self.assertIn("How much unfinished work was found", app)
+        for opaque in ("Exhibit ·", "affinity_id", "evidence_ids.join", "evidence.id"):
+            self.assertNotIn(opaque, app)
+
     def test_http_is_loopback_read_only_and_returns_405(self):
         payload = cabinet.canonical_bytes({"schema": "test", "exhibits": []})
         server = cabinet.make_server(payload, 0)
